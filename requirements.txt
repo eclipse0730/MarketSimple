@@ -1,0 +1,4 @@
+# 필수
+pandas>=2.0
+finance-datareader>=0.9.50    # FDR 데이터 수집, 로그인 불필요
+requests>=2.0                 # FDR 날짜별 캐시 CSV 조회
