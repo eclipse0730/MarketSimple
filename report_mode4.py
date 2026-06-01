@@ -167,7 +167,7 @@ def _section_market(by_market):
         </div>"""
     return f"""
     <section class="reveal">
-      <div class="sec-head"><span class="num">02</span><h2>시장별 요약</h2>
+      <div class="sec-head"><span class="num">02</span><h2>시장별 요약</h2></div>
         <!--<span class="sec-note">지수 등락률 · 카운트는<br> 보통주 기준</span></div>-->
       <div class="mkt-grid">{cards}</div>
     </section>"""
@@ -537,10 +537,16 @@ _PAGE = """<!doctype html>
       flex:1;
       font-size:11px;
     }}
-    .tier-stocks,
+    .tier-stocks {{
+      display:flex;
+      flex-wrap:wrap;
+      align-items:flex-start;
+      gap:7px;
+      width:100%;
+    }}
     .tier-more-list {{
-      display:grid;
-      grid-template-columns:repeat(2, minmax(0, 1fr));
+      display:flex;
+      flex-wrap:wrap;
       gap:7px;
       width:100%;
     }}
@@ -554,8 +560,9 @@ _PAGE = """<!doctype html>
     }}
     .chip {{
       min-width:0;
-      width:100%;
-      justify-content:space-between;
+      width:auto;
+      max-width:100%;
+      justify-content:flex-start;
       gap:6px;
       padding:6px 9px;
     }}
@@ -573,7 +580,8 @@ _PAGE = """<!doctype html>
   @media (max-width:380px) {{
     .tier-stocks,
     .tier-more-list {{
-      grid-template-columns:1fr;
+      display:flex;
+      flex-wrap:wrap;
     }}
   }}
 </style>
