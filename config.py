@@ -35,3 +35,6 @@ THEME_MAP_FILE = "theme_map.csv"
 
 # 결과물 저장 폴더
 OUTPUT_DIR = "output"
+DATA_OUTPUT_DIR = "data"
+REPORT_OUTPUT_DIR = "report"
+THEME_OUTPUT_DIR = "theme"

@@ -17,9 +17,28 @@ from datetime import datetime
 import pandas as pd
 
 import config
-import collector
+import collector as collector_fdr
+import collector_naver
 import analyzer
 import report
+import report_mode1
+import report_mode2
+import report_mode3
+import report_mode4
+
+
+REPORT_MODES = {
+    "classic": report,
+    "mode1": report_mode1,
+    "mode2": report_mode2,
+    "mode3": report_mode3,
+    "mode4": report_mode4,
+}
+
+COLLECTORS = {
+    "fdr": collector_fdr,
+    "naver": collector_naver,
+}
 
 
 def guess_session() -> str:
@@ -27,7 +46,7 @@ def guess_session() -> str:
     return "morning" if datetime.now().hour < 14 else "close"
 
 
-def load_theme_map(date_str: str):
+def load_theme_map(date_str: str, collector_module, source_name: str):
     maps = []
 
     try:
@@ -37,10 +56,11 @@ def load_theme_map(date_str: str):
         pass
 
     try:
-        auto = collector.collect_theme_map(date_str)
-        maps.append(auto)
+        auto = collector_module.collect_theme_map(date_str)
+        if not auto.empty:
+            maps.append(auto)
     except Exception as exc:
-        print(f"  · [안내] FDR 업종 테마 수집 실패: {exc}")
+        print(f"  · [안내] {source_name} 업종 테마 수집 실패: {exc}")
 
     if not maps:
         return pd.DataFrame(columns=["종목코드", "종목명", "테마"])
@@ -63,6 +83,26 @@ def complete_theme_map(df, theme_map):
     return pd.concat([theme_map, fallback], ignore_index=True)
 
 
+def attach_market_indices(by_market, collector_module, date_str: str, historical: bool):
+    if not hasattr(collector_module, "collect_market_indices"):
+        return by_market
+
+    try:
+        indices = collector_module.collect_market_indices(date_str, historical=historical)
+    except Exception as exc:
+        print(f"  · [안내] 시장 지수 수집 실패: {exc}")
+        return by_market
+
+    for market, values in indices.items():
+        if market in by_market:
+            by_market[market].update({
+                "index_value": values.get("value"),
+                "index_change": values.get("change"),
+                "index_rate": values.get("rate"),
+            })
+    return by_market
+
+
 def parse_date(date_str: str) -> str:
     """YYYYMMDD 형식의 날짜 문자열을 검증해서 반환한다."""
     try:
@@ -78,35 +118,58 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description="Market Brief V1")
     ap.add_argument("--session", choices=["morning", "close"], help="리포트 세션")
     ap.add_argument("--date", type=parse_date, help="기준일 YYYYMMDD (예: 20260529)")
+    ap.add_argument("--mode", choices=sorted(REPORT_MODES), default="mode1",
+                    help="HTML 리포트 디자인 모드 (기본: mode1)")
+    ap.add_argument("--source", choices=sorted(COLLECTORS), default="naver",
+                    help="데이터 수집 소스 (기본: naver)")
+    ap.add_argument("--force", action="store_true",
+                    help="기존 CSV가 있어도 데이터를 다시 수집")
     args = ap.parse_args(argv)
 
     started = time.time()
     date_str = args.date or datetime.now().strftime("%Y%m%d")
     session = args.session or guess_session()
+    collector = COLLECTORS[args.source]
 
-    print(f"▶ Market Brief V1  |  {date_str}  |  {session}  |  source=fdr")
+    data_dir = os.path.join(config.OUTPUT_DIR, config.DATA_OUTPUT_DIR)
+    report_dir = os.path.join(config.OUTPUT_DIR, config.REPORT_OUTPUT_DIR)
+    theme_dir = os.path.join(config.OUTPUT_DIR, config.THEME_OUTPUT_DIR)
+    os.makedirs(data_dir, exist_ok=True)
+    os.makedirs(report_dir, exist_ok=True)
+    os.makedirs(theme_dir, exist_ok=True)
+
+    csv_path = os.path.join(data_dir, f"market_{date_str}_{session}.csv")
+    theme_map_path = os.path.join(theme_dir, f"theme_map_{date_str}.csv")
+    html_path = os.path.join(report_dir, f"한국증시 DailyTier [{date_str}]_{args.mode}.html")
+
+    print(f"▶ Market Brief V1  |  {date_str}  |  {session}  |  source={args.source}")
 
     # 1) 수집
-    df = collector.collect(date_str, historical=bool(args.date))
-    print(f"  · 수집 종목 수: {len(df):,}")
+    if os.path.exists(csv_path) and not args.force:
+        df = pd.read_csv(csv_path, dtype={"종목코드": str})
+        df["종목코드"] = df["종목코드"].astype(str).str.zfill(6)
+        print(f"  · 기존 CSV 사용: {csv_path}")
+        print(f"  · 로드 종목 수: {len(df):,}")
+    else:
+        if args.force and os.path.exists(csv_path):
+            print("  · --force 지정: 기존 CSV를 무시하고 재수집")
+        df = collector.collect(date_str, historical=bool(args.date))
+        print(f"  · 수집 종목 수: {len(df):,}")
+        report.write_csv(df, csv_path)
 
     # 2) 분석
     overall, by_market = analyzer.market_strength(df)
+    by_market = attach_market_indices(by_market, collector, date_str, bool(args.date))
     tiers = analyzer.build_tiers(df)
-    theme_map = load_theme_map(date_str)
+    theme_map = load_theme_map(date_str, collector, args.source)
     theme_map = complete_theme_map(df, theme_map)
     print(f"  · 테마 매핑 수: {len(theme_map):,}")
     top, bottom = analyzer.theme_analysis(df, theme_map)
 
     # 3) 출력
-    os.makedirs(config.OUTPUT_DIR, exist_ok=True)
-    csv_path = os.path.join(config.OUTPUT_DIR, f"market_{date_str}_{session}.csv")
-    theme_map_path = os.path.join(config.OUTPUT_DIR, f"theme_map_{date_str}.csv")
-    html_path = os.path.join(config.OUTPUT_DIR, f"report_{date_str}_{session}.html")
-
-    report.write_csv(df, csv_path)
     report.write_theme_map(theme_map, theme_map_path)
-    report.write_html(
+    renderer = REPORT_MODES[args.mode]
+    renderer.write_html(
         html_path,
         date_str=date_str,
         session=session,
@@ -124,7 +187,7 @@ def main(argv=None):
           f"/ 보합 {overall['flat']:,}({overall['flat_pct']}%)")
     print(f"✔ CSV : {csv_path}")
     print(f"✔ THEME: {theme_map_path}")
-    print(f"✔ HTML: {html_path}")
+    print(f"✔ HTML({args.mode}): {html_path}")
     print(f"⏱ {elapsed:.1f}초")
 
 
