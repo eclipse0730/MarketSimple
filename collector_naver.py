@@ -27,7 +27,9 @@ USER_AGENT = (
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 )
 MARKETS = {"KOSPI": 0, "KOSDAQ": 1}
+FLOW_MARKETS = {"KOSPI": "01", "KOSDAQ": "02"}
 MARKET_SUM_URL = "https://finance.naver.com/sise/sise_market_sum.naver"
+INVESTOR_FLOW_URL = "https://finance.naver.com/sise/investorDealTrendDay.naver"
 DAILY_URL = "https://api.finance.naver.com/siseJson.naver"
 HISTORY_WORKERS = 8
 
@@ -51,6 +53,14 @@ def collect_market_indices(date_str: str, historical: bool = False) -> dict:
     if historical and date_str != today:
         return _collect_index_history(date_str)
     return _collect_index_snapshot()
+
+
+def collect_market_flows(date_str: str, historical: bool = False) -> dict:
+    """KOSPI/KOSDAQ 투자자별 순매수 금액을 수집한다. 단위는 억원."""
+    return {
+        market: _read_investor_flow(date_str, sosok)
+        for market, sosok in FLOW_MARKETS.items()
+    }
 
 
 def _collect_snapshot() -> pd.DataFrame:
@@ -113,6 +123,42 @@ def _read_market_page(market: str, sosok: int, page: int) -> pd.DataFrame:
     })
     out["거래대금"] = (out["현재가"].fillna(0) * out["거래량"].fillna(0)).astype("int64")
     return out[COLUMNS]
+
+
+def _read_investor_flow(date_str: str, sosok: str) -> dict:
+    response = requests.get(
+        INVESTOR_FLOW_URL,
+        params={"bizdate": date_str, "sosok": sosok, "page": 1},
+        headers={"User-Agent": USER_AGENT},
+        timeout=20,
+    )
+    response.raise_for_status()
+    response.encoding = "euc-kr"
+
+    tables = pd.read_html(StringIO(response.text))
+    if not tables:
+        raise RuntimeError("네이버 투자자별 매매동향 테이블을 찾지 못했습니다")
+
+    table = tables[0].dropna(how="all")
+    if table.empty:
+        raise RuntimeError("네이버 투자자별 매매동향 결과가 비어 있습니다")
+
+    target_label = datetime.strptime(date_str, "%Y%m%d").strftime("%y.%m.%d")
+    selected = None
+    for row in table.itertuples(index=False, name=None):
+        if str(row[0]).strip() == target_label:
+            selected = row
+            break
+    if selected is None:
+        selected = next((row for row in table.itertuples(index=False, name=None) if not pd.isna(row[0])), None)
+    if selected is None:
+        raise RuntimeError("네이버 투자자별 매매동향 날짜 행을 찾지 못했습니다")
+
+    return {
+        "personal": _to_number(selected[1]) or 0,
+        "foreign": _to_number(selected[2]) or 0,
+        "institution": _to_number(selected[3]) or 0,
+    }
 
 
 def _collect_index_snapshot() -> dict:

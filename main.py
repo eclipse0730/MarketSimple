@@ -103,6 +103,26 @@ def attach_market_indices(by_market, collector_module, date_str: str, historical
     return by_market
 
 
+def attach_market_flows(by_market, collector_module, date_str: str, historical: bool):
+    if not hasattr(collector_module, "collect_market_flows"):
+        return by_market
+
+    try:
+        flows = collector_module.collect_market_flows(date_str, historical=historical)
+    except Exception as exc:
+        print(f"  · [안내] 투자자별 수급 수집 실패: {exc}")
+        return by_market
+
+    for market, values in flows.items():
+        if market in by_market:
+            by_market[market].update({
+                "flow_personal": values.get("personal"),
+                "flow_foreign": values.get("foreign"),
+                "flow_institution": values.get("institution"),
+            })
+    return by_market
+
+
 def parse_date(date_str: str) -> str:
     """YYYYMMDD 형식의 날짜 문자열을 검증해서 반환한다."""
     try:
@@ -160,6 +180,7 @@ def main(argv=None):
     # 2) 분석
     overall, by_market = analyzer.market_strength(df)
     by_market = attach_market_indices(by_market, collector, date_str, bool(args.date))
+    by_market = attach_market_flows(by_market, collector, date_str, bool(args.date))
     tiers = analyzer.build_tiers(df)
     theme_map = load_theme_map(date_str, collector, args.source)
     theme_map = complete_theme_map(df, theme_map)

@@ -45,6 +45,12 @@ def _fmt_index(value):
     return f"{value:,.2f}" if value is not None else "N/A"
 
 
+def _fmt_flow(value):
+    if value is None:
+        return "N/A"
+    return f"{value:+,.0f}억"
+
+
 def _strength_bar(c):
     return (
         f'<div class="bar" role="img" aria-label="상승 {c["up_pct"]}% 하락 {c["down_pct"]}%">'
@@ -53,6 +59,22 @@ def _strength_bar(c):
         f'<span class="seg down" style="width:{c["down_pct"]}%"></span>'
         f'</div>'
     )
+
+
+def _market_flow_row(c):
+    flows = [
+        ("기관", c.get("flow_institution")),
+        ("외인", c.get("flow_foreign")),
+        ("개인", c.get("flow_personal")),
+    ]
+    if all(value is None for _, value in flows):
+        return ""
+    items = "".join(
+        f'<span class="flow-item"><span>{label}</span>'
+        f'<b class="mono {_cls(value or 0)}">{_fmt_flow(value)}</b></span>'
+        for label, value in flows
+    )
+    return f'<div class="mkt-flow">{items}</div>'
 
 
 def _stock_chip(row):
@@ -141,11 +163,12 @@ def _section_market(by_market):
             <span class="flat">— {c['flat']:,}</span>
             <span class="down">▼ {c['down']:,}</span>
           </div>
+          {_market_flow_row(c)}
         </div>"""
     return f"""
     <section class="reveal">
       <div class="sec-head"><span class="num">02</span><h2>시장별 요약</h2>
-        <span class="sec-note">지수 등락률 · 카운트는<br> 보통주 기준</span></div>
+        <!--<span class="sec-note">지수 등락률 · 카운트는<br> 보통주 기준</span></div>-->
       <div class="mkt-grid">{cards}</div>
     </section>"""
 
@@ -361,6 +384,12 @@ _PAGE = """<!doctype html>
   .mkt-rate {{ font-size:14px; font-weight:800; }}
   .mkt-change {{ font-size:12px; font-weight:750; }}
   .mkt-total {{ font-size:14px; color:var(--sub); font-weight:600; }}
+  .mkt-flow {{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px; margin-top:10px; }}
+  .flow-item {{ display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px;
+                min-width:0; padding:8px 6px; border:1px solid var(--line); border-radius:12px;
+                background:rgba(255,255,255,.68); font-family:var(--round);
+                font-size:11px; line-height:1.1; font-weight:700; color:var(--sub); text-align:center; }}
+  .flow-item b {{ font-size:11.5px; font-weight:850; line-height:1.1; white-space:nowrap; }}
   .mkt-row {{ display:flex; gap:18px; margin-top:13px; font-family:var(--round);
               font-size:13.5px; font-weight:700; }}
 
