@@ -94,6 +94,27 @@ cron 예시 (Linux/Mac):
 40 15 * * 1-5 cd /경로/market_brief && python main.py --force
 ```
 
+## GitHub Pages 게시
+
+최신 리포트를 `docs/`에 복사해 GitHub Pages에서 볼 수 있게 갱신합니다.
+
+```bash
+python scripts/publish_pages.py
+```
+
+GitHub 저장소 설정:
+
+* `Settings > Pages`
+* Source: `Deploy from a branch`
+* Branch: `main`
+* Folder: `/docs`
+
+게시 후 주소는 보통 아래 형식입니다.
+
+```text
+https://eclipse0730.github.io/MarketSimple/
+```
+
 ## 참고 / 주의
 
 * `kr/theme_map.csv`는 핵심 테마를 보강하는 용도입니다.
