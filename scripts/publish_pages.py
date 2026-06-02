@@ -185,7 +185,11 @@ def main() -> None:
 
     kr_ready = publish_market("kr", "KR Market Brief")
     us_ready = publish_market("us", "US Market Brief")
-    _write_text(DOCS / "index.html", _home_page(kr_ready, us_ready))
+    # 루트 진입 시 KR 최신 리포트로 바로 이동 (KR이 메인). KR이 없으면 선택 메뉴 폴백.
+    if kr_ready:
+        _write_text(DOCS / "index.html", _redirect_page("Market Brief", "kr/"))
+    else:
+        _write_text(DOCS / "index.html", _home_page(kr_ready, us_ready))
     print("✔ docs/ 갱신 완료")
 
 
