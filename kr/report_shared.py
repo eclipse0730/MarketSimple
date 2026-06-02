@@ -1,13 +1,15 @@
 # -*- coding: utf-8 -*-
 """고정된 리포트 구조와 데이터 노출 로직을 담당하는 공유 렌더러."""
 
+from html import escape
+
 from . import config
 from .report_themes import get_theme
 
 SESSION_LABEL = {"snapshot": "스냅샷"}
 
 TIER_COLLAPSE_LIMIT = 30
-TIER_COLLAPSE_LIMITS = {"C": 10, "D": 10, "E": 10}
+TIER_COLLAPSE_LIMITS = {"B": 10, "C": 10, "D": 10, "E": 10}
 
 
 def write_csv(df, path):
@@ -81,6 +83,39 @@ def _stock_chip(row):
     )
 
 
+def _section_icon(name, label):
+    icons = {
+        "market": (
+            '<path d="M4.5 16.5h15"/>'
+            '<path d="M6.5 14.5l3.2-3.6 3.1 2.2 4.7-6.1"/>'
+            '<path d="M16.5 7h3v3"/>'
+        ),
+        "money": (
+            '<circle cx="12" cy="12" r="7.5"/>'
+            '<path d="M7.7 9.2l1.5 5.6 2.8-5.6 2.8 5.6 1.5-5.6"/>'
+            '<path d="M7.3 12h9.4"/>'
+        ),
+        "tier": (
+            '<path d="M12 4.7l2.1 4.2 4.6.7-3.3 3.2.8 4.6-4.2-2.2-4.2 2.2.8-4.6-3.3-3.2 4.6-.7z"/>'
+        ),
+        "sector": (
+            '<rect x="5" y="5" width="5.5" height="5.5" rx="1.4"/>'
+            '<rect x="13.5" y="5" width="5.5" height="5.5" rx="1.4"/>'
+            '<rect x="5" y="13.5" width="5.5" height="5.5" rx="1.4"/>'
+            '<rect x="13.5" y="13.5" width="5.5" height="5.5" rx="1.4"/>'
+        ),
+        "heat": (
+            '<path d="M12 20c3.1 0 5.5-2.2 5.5-5.4 0-2.6-1.6-4.2-3.2-5.7-.9-.9-1.8-1.7-2.1-3.1-2.2 1.5-3.3 3.3-3.1 5.2-.8-.5-1.4-1.2-1.7-2.1-.8 1.2-1.1 2.4-1.1 3.8C6.3 16.8 8.7 20 12 20z"/>'
+            '<path d="M12 17.6c1.4 0 2.4-1 2.4-2.3 0-1-.5-1.7-1.2-2.3-.5-.5-.9-.9-1-1.6-1.2.9-1.8 1.9-1.6 3-.5-.3-.8-.7-1-1.2-.3.6-.5 1.2-.5 1.8 0 1.5 1.1 2.6 2.9 2.6z"/>'
+        ),
+    }
+    svg = icons[name]
+    return (
+        f'<span class="num icon-{name}" role="img" aria-label="{label}">'
+        f'<svg viewBox="0 0 24 24" aria-hidden="true">{svg}</svg></span>'
+    )
+
+
 # ──────────────────────────────────────────────
 # sections
 # ──────────────────────────────────────────────
@@ -128,7 +163,7 @@ def _section_market(by_market):
         </div>"""
     return f"""
     <section class="reveal">
-      <div class="sec-head"><span class="num">01</span><h2>시장별 요약</h2></div>
+      <div class="sec-head">{_section_icon("market", "시장별 요약")}<h2>시장별 요약</h2></div>
       <div class="mkt-grid">{cards}</div>
     </section>"""
 
@@ -146,6 +181,11 @@ def _tier_rows(tiers, theme):
             rng = f"{hi:.0f}% 이하"
         elif name in config.UP_TIERS:
             rng = f"+{lo:.0f} ~ +{hi:.0f}%"
+        elif name in config.DOWN_TIERS:
+            if min(lo, hi) <= -999:
+                rng = f"{max(lo, hi):.0f}% 이하"
+            else:
+                rng = f"{max(lo, hi):.0f} ~ {min(lo, hi):.0f}%"
         else:
             rng = f"{lo:.0f} ~ {hi:.0f}%"
 
@@ -205,29 +245,47 @@ def _section_tiers(tiers, theme, tiers_common=None):
     return f"""
     <section class="reveal">
       {toggle}
-      <div class="sec-head"><span class="num">03</span><h2>종목 Tier</h2>{switch}</div>
+      <div class="sec-head">{_section_icon("tier", "종목 Tier")}<h2>종목 Tier</h2>{switch}</div>
       {common_block}
       <div class="tiers tiers-all">{all_rows}</div>
     </section>"""
 
 
+TV_COLLAPSE_LIMIT = 10
+
+
+def _tv_chip(i, r):
+    code = str(r.종목코드).zfill(6)
+    url = config.STOCK_URL_TEMPLATE.format(code=code, code6=code, symbol=code)
+    cls = _cls(r.등락률)
+    name = str(r.종목명)
+    name_attr = escape(name, quote=True)
+    return (
+        f'<a class="tv-chip {cls}" href="{url}" target="_blank" rel="noopener noreferrer"'
+        f' title="{name_attr}" aria-label="{name_attr}">'
+        f'<span class="tv-top">'
+        f'<span class="tv-r mono">{i}</span>'
+        f'<span class="tv-n">{r.종목명}</span>'
+        f'</span>'
+        f'<span class="tv-meta">'
+        f'<span class="tv-rate mono {cls}">{_fmt(r.등락률)}%</span>'
+        f'<span class="tv-a mono">{_fmt_amount(r.거래대금)}</span>'
+        f'</span></a>'
+    )
+
+
 def _tv_chip_grid(rows, grid_cls):
-    chips = ""
-    for i, r in enumerate(rows.itertuples(), 1):
-        code = str(r.종목코드).zfill(6)
-        url = config.STOCK_URL_TEMPLATE.format(code=code, code6=code, symbol=code)
-        cls = _cls(r.등락률)
+    all_rows = list(rows.itertuples())
+    visible = all_rows[:TV_COLLAPSE_LIMIT]
+    hidden = all_rows[TV_COLLAPSE_LIMIT:]
+    chips = "".join(_tv_chip(i + 1, r) for i, r in enumerate(visible))
+    if hidden:
+        hidden_chips = "".join(_tv_chip(i + TV_COLLAPSE_LIMIT + 1, r) for i, r in enumerate(hidden))
         chips += f"""
-        <a class="tv-chip {cls}" href="{url}" target="_blank" rel="noopener noreferrer">
-          <span class="tv-r mono">{i}</span>
-          <span class="tv-body">
-            <span class="tv-n">{r.종목명}</span>
-            <span class="tv-meta">
-              <span class="tv-rate mono {cls}">{_fmt(r.등락률)}%</span>
-              <span class="tv-a mono">{_fmt_amount(r.거래대금)}</span>
-            </span>
-          </span>
-        </a>"""
+        <details class="tv-more">
+          <summary class="mono">+{len(hidden)}개 더 보기</summary>
+          <div class="tv-more-grid">{hidden_chips}</div>
+        </details>"""
     return f'<div class="tv-chips {grid_cls}">{chips}</div>'
 
 
@@ -249,7 +307,7 @@ def _section_top_value(top_value, top_value_common=None):
     return f"""
     <section class="reveal tv-section">
       {toggle}
-      <div class="sec-head"><span class="num">02</span><h2>거래대금 Top30</h2>{switch}</div>
+      <div class="sec-head">{_section_icon("money", "거래대금 Top30")}<h2>거래대금 Top30</h2>{switch}</div>
       {common_grid}
       {all_grid}
     </section>"""
@@ -276,6 +334,8 @@ def _sector_tier_rows(sector_tiers, theme):
             rng = f"{hi:.1f}%p 이하"
         elif name in config.UP_TIERS:
             rng = f"+{lo:.1f} ~ +{hi:.1f}%p"
+        elif name in config.DOWN_TIERS:
+            rng = f"{max(lo, hi):.1f} ~ {min(lo, hi):.1f}%p"
         else:
             rng = f"{lo:.1f} ~ {hi:.1f}%p"
 
@@ -306,7 +366,7 @@ def _section_sector_tiers(sector_tiers, market_avg, theme):
     rows = _sector_tier_rows(sector_tiers, theme)
     return f"""
     <section class="reveal">
-      <div class="sec-head"><span class="num">04</span><h2>섹터 Tier</h2>
+      <div class="sec-head">{_section_icon("sector", "섹터 Tier")}<h2>섹터 Tier</h2>
         <span class="sec-note">시장평균 {_fmt(market_avg)}% 기준 · 값은 초과수익(%p)</span></div>
       <div class="tiers">{rows}</div>
     </section>"""
@@ -349,7 +409,7 @@ def _section_heatmap(big_theme):
     cells = "".join(_heat_card(r) for r in big_theme.itertuples())
     return f"""
     <section class="reveal">
-      <div class="sec-head"><span class="num">02</span><h2>대테마 히트맵</h2>
+      <div class="sec-head">{_section_icon("heat", "대테마 히트맵")}<h2>대테마 히트맵</h2>
         <span class="sec-note">평균 등락률 · 강한 → 약한</span></div>
       <div class="heatmap">{cells}</div>
     </section>"""
@@ -424,26 +484,29 @@ _PAGE = """<!doctype html>
   section {{ background:var(--panel); border:1px solid var(--line);
              border-radius:24px; padding:26px 28px; margin-bottom:20px; position:relative;
              box-shadow:var(--section-shadow); }}
-  .sec-head {{ display:flex; align-items:center; gap:12px; margin-bottom:22px; }}
+  .sec-head {{ display:flex; align-items:center; gap:12px; margin-bottom:22px; min-width:0; }}
   .num {{ font-family:var(--round); font-size:12px; font-weight:700; color:#fff;
           background:linear-gradient(135deg,var(--accent),var(--up));
           border-radius:50%; width:28px; height:28px; display:flex; align-items:center;
           justify-content:center; letter-spacing:0; box-shadow:0 3px 8px rgba(217,138,168,.3); }}
+  .num svg {{ width:17px; height:17px; fill:none; stroke:currentColor; stroke-width:2.05;
+              stroke-linecap:round; stroke-linejoin:round; }}
   .sec-head h2 {{ font-family:var(--serif); font-weight:700; font-size:22px; margin:0;
                   letter-spacing:-.01em; color:var(--heading); }}
   .sec-note {{ margin-left:auto; font-family:var(--round); font-size:11.5px;
                color:var(--sub); letter-spacing:.03em; font-weight:600; }}
 
   /* summary */
-  .metrics {{ display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-bottom:20px; }}
+  .metrics {{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; margin-bottom:20px; }}
   .metric {{ padding:18px 18px; border-radius:18px; text-align:center;
+             min-width:0; overflow:hidden;
              background:linear-gradient(180deg,var(--panel2),var(--panel)); border:1px solid var(--line); }}
   .metric.up-card {{ background:linear-gradient(180deg,var(--up-soft),var(--panel)); border-color:var(--up-mid); }}
   .metric.down-card {{ background:linear-gradient(180deg,var(--down-soft),var(--panel)); border-color:var(--down-mid); }}
   .m-label {{ font-size:12px; color:var(--sub); margin-bottom:8px; letter-spacing:.02em; font-weight:700; }}
   .m-value {{ font-size:28px; font-weight:800; line-height:1; display:flex;
-              align-items:baseline; gap:7px; justify-content:center; }}
-  .m-pct {{ font-size:13px; font-weight:600; opacity:.8; }}
+              align-items:baseline; gap:7px; justify-content:center; min-width:0; flex-wrap:wrap; }}
+  .m-pct {{ font-size:13px; font-weight:600; opacity:.8; white-space:nowrap; }}
   .bar {{ display:flex; height:14px; border-radius:999px; overflow:hidden;
           background:var(--flat-soft); padding:0; }}
   .seg {{ height:100%; transition:width 1s cubic-bezier(.16,1,.3,1); }}
@@ -452,7 +515,7 @@ _PAGE = """<!doctype html>
   .seg.flat {{ background:var(--flat); opacity:.48; }}
 
   /* market cards */
-  .mkt-grid {{ display:grid; grid-template-columns:1fr 1fr; gap:16px; }}
+  .mkt-grid {{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }}
   /* 시장 카드 안 상승/보합/하락 카드 (지수 밑, 컴팩트) */
   .mkt-metrics {{ gap:8px; margin:0; }}
   .mkt-metrics .metric {{ padding:11px 8px; border-radius:14px; }}
@@ -461,13 +524,15 @@ _PAGE = """<!doctype html>
   .mkt-metrics .m-pct {{ font-size:10.5px; }}
   .mkt-card .bar {{ margin-top:13px; }}
   .mkt-card {{ padding:20px 22px; border-radius:20px;
+              min-width:0; overflow:hidden;
               background:linear-gradient(180deg,var(--panel2),var(--panel));
               border:1px solid var(--line); }}
-  .mkt-head {{ display:flex; align-items:baseline; justify-content:space-between; margin-bottom:14px; }}
+  .mkt-head {{ display:flex; align-items:baseline; justify-content:space-between; gap:10px 14px; margin-bottom:14px; min-width:0; }}
   .mkt-head h3 {{ font-family:var(--round); font-size:16px; font-weight:700; margin:0;
                   letter-spacing:.04em; color:var(--heading); }}
-  .mkt-head-idx {{ display:inline-flex; align-items:baseline; gap:8px; }}
+  .mkt-head-idx {{ display:inline-flex; align-items:baseline; justify-content:flex-end; gap:8px; min-width:0; }}
   .mkt-index {{ font-size:17px; font-weight:850; color:var(--strong); }}
+  .mkt-index, .mkt-rate, .mkt-change {{ max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }}
   .mkt-rate {{ font-size:14px; font-weight:800; }}
   .mkt-change {{ font-size:12px; font-weight:750; }}
   .mkt-flow {{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px; margin-top:10px; }}
@@ -475,7 +540,8 @@ _PAGE = """<!doctype html>
                 min-width:0; padding:8px 6px; border:1px solid var(--line); border-radius:12px;
                 background:color-mix(in srgb, var(--panel) 78%, transparent); font-family:var(--round);
                 font-size:11px; line-height:1.1; font-weight:700; color:var(--sub); text-align:center; }}
-  .flow-item b {{ font-size:11.5px; font-weight:850; line-height:1.1; white-space:nowrap; }}
+  .flow-item b {{ max-width:100%; overflow:hidden; text-overflow:ellipsis;
+                  font-size:11.5px; font-weight:850; line-height:1.1; white-space:nowrap; }}
 
   /* tiers */
   .tier-row {{ display:flex; gap:16px; padding:15px 0 15px 18px; position:relative;
@@ -605,27 +671,49 @@ _PAGE = """<!doctype html>
   .rep-toggle:checked ~ .tiers.tiers-all {{ display:block; }}
 
   /* trading value top — 2줄 캐주얼 칩 */
-  .tv-chips {{ display:grid; grid-template-columns:repeat(6, 1fr); gap:9px; }}
+  .tv-chips {{ display:grid; grid-template-columns:repeat(5, minmax(0, 1fr)); gap:9px;
+               grid-auto-rows:64px; }}
+  .tv-more {{ grid-column:1 / -1; margin-top:4px; }}
+  .tv-more summary {{
+    display:inline-flex; align-items:center; height:30px; cursor:pointer;
+    color:var(--chip-text); border:1px solid var(--line);
+    background:var(--flat-soft); border-radius:999px;
+    padding:0 14px; font-size:11.5px; list-style:none; user-select:none;
+  }}
+  .tv-more summary::-webkit-details-marker {{ display:none; }}
+  .tv-more summary::after {{ content:"펼치기"; margin-left:8px; color:var(--sub);
+    font-family:var(--sans); font-size:11px; font-weight:700; }}
+  .tv-more[open] summary::after {{ content:"접기"; }}
+  .tv-more-grid {{ display:grid; grid-template-columns:repeat(5, minmax(0, 1fr));
+                   gap:9px; grid-auto-rows:64px; margin-top:9px; }}
   .tv-chips.tv-all {{ display:none; }}
   .rep-toggle:checked ~ .tv-chips.tv-common {{ display:none; }}
   .rep-toggle:checked ~ .tv-chips.tv-all {{ display:grid; }}
 
-  .tv-chip {{ display:inline-flex; align-items:center; gap:10px; text-decoration:none;
-              border-radius:16px; padding:8px 14px; min-width:0;
-              background:var(--chip-base); border:1px solid var(--line);
+  .tv-chip {{ position:relative; display:flex; flex-direction:column; justify-content:center; gap:7px; text-decoration:none;
+              border-radius:16px; padding:10px 12px 10px 14px; min-width:0; width:100%; overflow:hidden;
+              background:linear-gradient(180deg,var(--panel2),var(--chip-base)); border:1px solid var(--line);
               transition:transform .14s ease, box-shadow .14s ease; }}
-  .tv-chip:hover {{ transform:translateY(-2px); box-shadow:0 4px 12px rgba(216,138,168,.16); }}
-  .tv-chip.up {{ background:color-mix(in srgb, var(--up) 9%, var(--chip-base)); border-color:var(--up-mid); }}
-  .tv-chip.down {{ background:color-mix(in srgb, var(--down) 9%, var(--chip-base)); border-color:var(--down-mid); }}
-  .tv-chip .tv-r {{ flex:0 0 auto; font-size:11px; font-weight:800; color:var(--faint);
-                    min-width:21px; height:21px; display:inline-flex; align-items:center;
-                    justify-content:center; border-radius:50%; background:var(--flat-soft); }}
-  .tv-body {{ display:flex; flex-direction:column; gap:3px; min-width:0; flex:1; }}
-  .tv-n {{ font-size:13px; font-weight:700; color:var(--chip-name);
+  .tv-chip:hover {{ transform:translateY(-2px); box-shadow:0 5px 14px rgba(79,65,72,.12); }}
+  .tv-top {{ display:flex; align-items:center; gap:8px; min-width:0; width:100%; }}
+  .tv-chip .tv-r {{ flex:0 0 auto; font-size:12px; font-weight:900; color:#fff;
+                    min-width:22px; height:22px; display:inline-flex; align-items:center;
+                    justify-content:center; border-radius:50%;
+                    background:var(--flat-soft); color:var(--sub);
+                    border:1px solid color-mix(in srgb, var(--faint) 28%, var(--chip-base));
+                    box-shadow:none; }}
+  .tv-chips > .tv-chip:nth-child(1) .tv-r {{ background:linear-gradient(135deg,#ffe18a,#f4b83f); color:#6b4a00; }}
+  .tv-chips > .tv-chip:nth-child(2) .tv-r {{ background:linear-gradient(135deg,#f3f4f6,#b8c0cc); color:#4f5968; }}
+  .tv-chips > .tv-chip:nth-child(3) .tv-r {{ background:linear-gradient(135deg,#f3bf8d,#b87333); color:#fff8f0; }}
+  .tv-n {{ flex:1 1 auto; min-width:0; font-size:13px; font-weight:800; color:var(--chip-name);
            white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }}
-  .tv-meta {{ display:flex; justify-content:space-between; align-items:baseline; gap:14px; }}
-  .tv-rate {{ font-size:11.5px; font-weight:800; }}
-  .tv-a {{ font-size:12px; font-weight:850; color:var(--strong); }}
+  .tv-meta {{ display:flex; justify-content:space-between; align-items:center; gap:8px; min-width:0; width:100%; }}
+  .tv-rate {{ flex:0 1 auto; min-width:0; max-width:100%; overflow:hidden; text-overflow:ellipsis;
+              font-size:12px; line-height:1; font-weight:900; white-space:nowrap;
+              padding:0; border-radius:0; background:transparent; }}
+  .tv-a {{ flex:0 1 auto; min-width:0; max-width:100%; overflow:hidden; text-overflow:ellipsis;
+           margin-left:auto; font-size:12.5px; line-height:1; font-weight:950; color:var(--strong);
+           white-space:nowrap; padding:3px 0; letter-spacing:.01em; }}
 
   footer {{ margin-top:32px; padding-top:20px; text-align:center; font-family:var(--round);
             font-size:11.5px; color:var(--faint); letter-spacing:.02em; font-weight:600; }}
@@ -642,7 +730,13 @@ _PAGE = """<!doctype html>
   }}
 
   @media (max-width:680px) {{
+    .wrap {{ padding:32px 14px 64px; }}
+    section {{ border-radius:18px; padding:20px 16px; }}
     header h1 {{ font-size:33px; }}
+    .sec-head {{ flex-wrap:wrap; gap:10px; margin-bottom:18px; }}
+    .sec-head h2 {{ font-size:20px; flex:1 1 auto; }}
+    .sec-note {{ flex-basis:100%; margin-left:40px; }}
+    .rep-switch {{ margin-left:0; flex:0 0 auto; }}
     .metrics {{ grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; }}
     .metric {{ padding:13px 8px; border-radius:14px; }}
     .m-label {{ font-size:10.5px; margin-bottom:6px; }}
@@ -654,9 +748,16 @@ _PAGE = """<!doctype html>
     .heat-cell .h-val {{ font-size:20px; }}
     .theme-item {{ grid-template-columns:26px 1fr 60px 38px; }}
     .theme-item .t-gauge {{ display:none; }}
-    .tv-chips {{ grid-template-columns:repeat(3, 1fr); gap:7px; }}
-    .tv-chip {{ padding:8px 12px; gap:8px; }}
+    .tv-chips {{ grid-template-columns:repeat(2, minmax(0, 1fr)); gap:7px; grid-auto-rows:58px; }}
+    .tv-more-grid {{ grid-template-columns:repeat(2, minmax(0, 1fr)); gap:7px; grid-auto-rows:58px; }}
+    .mkt-head {{ flex-wrap:wrap; }}
+    .mkt-head-idx {{ width:100%; justify-content:flex-start; flex-wrap:wrap; }}
+    .tv-chip {{ padding:9px 10px; gap:7px; }}
     .tv-chip .tv-n {{ font-size:12.5px; }}
+    .tv-top {{ gap:7px; }}
+    .tv-meta {{ gap:7px; }}
+    .tv-rate {{ font-size:11.5px; padding:3px 5px; }}
+    .tv-a {{ font-size:12px; }}
     .tier-row {{
       display:block;
       padding-left:14px;
@@ -724,6 +825,24 @@ _PAGE = """<!doctype html>
       display:flex;
       flex-wrap:wrap;
     }}
+  }}
+  @media (max-width:430px) {{
+    .tv-chips {{ grid-template-columns:1fr; grid-auto-rows:auto; }}
+    .tv-more-grid {{ grid-template-columns:1fr; grid-auto-rows:auto; }}
+    .tv-chip {{ min-height:44px; flex-direction:row; align-items:center; gap:8px; padding:8px 10px; }}
+    .tv-chip .tv-top {{ flex:1 1 auto; min-width:0; overflow:hidden; }}
+    .tv-chip .tv-meta {{ flex:0 0 120px; flex-direction:row; gap:6px; justify-content:flex-end; }}
+    .tv-chip .tv-n {{ font-size:12.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }}
+    .tv-chip .tv-rate {{ font-size:12px; white-space:nowrap; }}
+    .tv-chip .tv-a {{ font-size:12px; margin-left:0; }}
+    .mkt-metrics .m-value {{
+      flex-direction:column;
+      align-items:center;
+      gap:3px;
+      font-size:17px;
+      line-height:1.05;
+    }}
+    .mkt-metrics .m-pct {{ font-size:10px; }}
   }}
 </style>
 </head>

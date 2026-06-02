@@ -24,7 +24,9 @@ def _tier_of(rate: float):
 
 def _tier_of_value(value: float, tiers):
     for name, lo, hi in tiers:
-        if lo <= value < hi:
+        if lo <= hi and lo <= value < hi:
+            return name
+        if lo > hi and hi < value <= lo:
             return name
     return None
 
