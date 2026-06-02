@@ -53,6 +53,18 @@ SECTOR_TIERS = [
 # 티어표에서 티어당 최대로 보여줄 종목 수 (None 이면 전부)
 MAX_PER_TIER = None
 
+# ──────────────────────────────────────────────
+# 거래량 증가율(거래량 급증) 섹션
+#   당일 거래량 / 최근 N거래일 평균 거래량 = 배율(x).
+#   과거 CSV(market_YYYYMMDD.csv)들을 읽어 평균을 낸다. 파일이 N개 미만이면
+#   가용한 만큼만 평균에 쓴다(최소 VOLUME_SURGE_MIN_DAYS개는 있어야 계산).
+# ──────────────────────────────────────────────
+VOLUME_SURGE_TOP_N = 30        # 노출할 상위 종목 수
+VOLUME_SURGE_AVG_DAYS = 20     # 평균에 쓸 과거 거래일 수(당일 제외)
+VOLUME_SURGE_MIN_DAYS = 1      # 최소 이 일수의 과거 데이터가 있어야 계산
+VOLUME_SURGE_MIN_VALUE = 1_000_000_000  # 당일 거래대금 하한(잡주 노이즈 제거): 10억원
+VOLUME_SURGE_MIN_PREV_VOLUME = 1000     # 과거 평균 거래량 하한(0 나눗셈/거래정지 제거)
+
 # 테마 분석에 포함할 최소 종목 수 (이보다 적으면 평균이 불안정해 제외)
 MIN_THEME_STOCKS = 2
 

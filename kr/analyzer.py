@@ -6,6 +6,8 @@
 - theme_analysis  : 테마별 평균 등락률 (상위/하위 10개)
 """
 
+import pandas as pd
+
 from . import config
 
 FUND_PREFIXES = (
@@ -115,6 +117,52 @@ def top_trading_value(df, n=30, common_only=False):
         return df.head(0)
     base = _summary_universe(df) if common_only else df
     ranked = base.sort_values("거래대금", ascending=False).head(n)
+    return ranked.reset_index(drop=True)
+
+
+def volume_surge_top(df, prev_dfs, n=None, common_only=False):
+    """당일 거래량 / 최근 거래일 평균 거래량 = '거래량 배율' 상위 n개를 반환.
+
+    df       : 당일 스냅샷 (거래량/거래대금 포함)
+    prev_dfs : 과거 일자 DataFrame 리스트 (각각 종목코드·거래량 컬럼 필요)
+    반환 컬럼: 기존 + [평균거래량, 거래량배율]
+    """
+    n = n or config.VOLUME_SURGE_TOP_N
+    if "거래량" not in df.columns or not prev_dfs:
+        return df.head(0)
+
+    base = _summary_universe(df) if common_only else df
+    base = base.copy()
+
+    # 종목코드별 과거 평균 거래량 (가용한 일자만 평균)
+    frames = []
+    for pdf in prev_dfs:
+        if "종목코드" in pdf.columns and "거래량" in pdf.columns:
+            frames.append(pdf[["종목코드", "거래량"]])
+    if not frames:
+        return df.head(0)
+
+    hist = pd.concat(frames, ignore_index=True)
+    hist["종목코드"] = hist["종목코드"].astype(str).str.zfill(6)
+    avg_vol = (
+        hist.groupby("종목코드")["거래량"]
+        .mean()
+        .reset_index()
+        .rename(columns={"거래량": "평균거래량"})
+    )
+
+    base["종목코드"] = base["종목코드"].astype(str).str.zfill(6)
+    merged = base.merge(avg_vol, on="종목코드", how="inner")
+
+    # 노이즈 필터: 당일 거래대금 하한, 과거 평균 거래량 하한
+    merged = merged[merged["평균거래량"] >= config.VOLUME_SURGE_MIN_PREV_VOLUME]
+    if "거래대금" in merged.columns:
+        merged = merged[merged["거래대금"] >= config.VOLUME_SURGE_MIN_VALUE]
+    if merged.empty:
+        return df.head(0)
+
+    merged["거래량배율"] = (merged["거래량"] / merged["평균거래량"]).round(2)
+    ranked = merged.sort_values("거래량배율", ascending=False).head(n)
     return ranked.reset_index(drop=True)
 
 

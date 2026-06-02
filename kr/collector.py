@@ -19,7 +19,7 @@ from io import StringIO
 import pandas as pd
 import requests
 
-COLUMNS = ["종목코드", "종목명", "시장", "현재가", "등락률", "거래량", "거래대금"]
+COLUMNS = ["종목코드", "종목명", "시장", "현재가", "등락률", "거래량", "거래대금", "시가총액", "상장주식수"]
 THEME_COLUMNS = ["종목코드", "종목명", "테마"]
 SECTOR_COLUMNS = ["종목코드", "종목명", "섹터"]
 
@@ -190,6 +190,19 @@ def _read_market_page(market: str, sosok: int, page: int) -> pd.DataFrame:
         "거래량": table["거래량"].map(_to_number) if "거래량" in table.columns else 0,
     })
     out["거래대금"] = (out["현재가"].fillna(0) * out["거래량"].fillna(0)).astype("int64")
+
+    # 네이버 표기 단위 → 원/주 단위로 통일 (시총: 억원, 상장주식수: 천주)
+    if "시가총액" in table.columns:
+        cap_eok = table["시가총액"].map(_to_number)
+        out["시가총액"] = (cap_eok.fillna(0) * 100_000_000).astype("int64")
+    else:
+        out["시가총액"] = 0
+    if "상장주식수" in table.columns:
+        shares_k = table["상장주식수"].map(_to_number)
+        out["상장주식수"] = (shares_k.fillna(0) * 1000).astype("int64")
+    else:
+        out["상장주식수"] = 0
+
     return out[COLUMNS]
 
 
@@ -336,6 +349,9 @@ def _collect_history(date_str: str) -> pd.DataFrame:
     out = pd.DataFrame(rows, columns=COLUMNS)
     if out.empty:
         raise RuntimeError("네이버 과거 일봉 조회 결과가 비어 있습니다 (휴장일이거나 날짜 오류)")
+    # 과거 일봉 API엔 시총·상장주식수가 없다 → 0으로 채워 컬럼 일관성 유지
+    out["시가총액"] = out["시가총액"].fillna(0).astype("int64")
+    out["상장주식수"] = out["상장주식수"].fillna(0).astype("int64")
     return out[COLUMNS]
 
 

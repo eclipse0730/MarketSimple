@@ -8,7 +8,10 @@ Market Brief V1 — 실행 진입점
 """
 
 import argparse
+import glob
 import os
+import re
+import sys
 import time
 from datetime import datetime
 
@@ -128,6 +131,30 @@ def attach_market_flows(by_market, collector_module, date_str: str, historical: 
     return by_market
 
 
+def load_prev_market_frames(data_dir: str, date_str: str, days: int):
+    """기준일 이전의 market_YYYYMMDD.csv 들을 최신순으로 최대 days개 로드한다.
+
+    거래량 평균 계산용. 파일이 days개 미만이면 있는 만큼만 반환한다.
+    """
+    pattern = os.path.join(data_dir, "market_*.csv")
+    found = []
+    for path in glob.glob(pattern):
+        m = re.search(r"market_(\d{8})\.csv$", os.path.basename(path))
+        if m and m.group(1) < date_str:   # 기준일 이전만
+            found.append((m.group(1), path))
+
+    found.sort(reverse=True)   # 최신 날짜 우선
+    frames = []
+    for _d, path in found[:days]:
+        try:
+            pdf = pd.read_csv(path, dtype={"종목코드": str})
+            pdf["종목코드"] = pdf["종목코드"].astype(str).str.zfill(6)
+            frames.append(pdf)
+        except Exception as exc:
+            print(f"  · [안내] 과거 CSV 로드 실패({path}): {exc}")
+    return frames
+
+
 def parse_date(date_str: str) -> str:
     """YYYYMMDD 형식의 날짜 문자열을 검증해서 반환한다."""
     try:
@@ -140,12 +167,20 @@ def parse_date(date_str: str) -> str:
 
 
 def main(argv=None):
+    # Windows 콘솔(cp949)에서 ✔ ⏱ · 등 유니코드 출력이 깨지지 않도록 UTF-8로.
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except (AttributeError, ValueError):
+        pass
+
     ap = argparse.ArgumentParser(description="Market Brief V1")
     ap.add_argument("--date", type=parse_date, help="기준일 YYYYMMDD (예: 20260529)")
     ap.add_argument("--mode", choices=sorted(REPORT_MODES), default="mode1",
                     help="HTML 리포트 디자인 모드 (기본: mode1)")
     ap.add_argument("--force", action="store_true",
                     help="기존 날짜 CSV/리포트를 현재 스냅샷으로 갱신")
+    ap.add_argument("--collector", action="store_true",
+                    help="CSV 수집/저장 단계까지만 실행하고 리포트 생성은 건너뜀")
     ap.add_argument("--refresh-sector", action="store_true",
                     help="섹터(업종) 매핑을 네이버에서 재수집해 sector_map.csv 갱신")
     args = ap.parse_args(argv)
@@ -180,6 +215,13 @@ def main(argv=None):
         print(f"  · 수집 종목 수: {len(df):,}")
         report.write_csv(df, csv_path)
 
+    if args.collector:
+        elapsed = time.time() - started
+        print("  · --collector 지정: CSV 수집 단계에서 종료")
+        print(f"CSV : {csv_path}")
+        print(f"{elapsed:.1f}초")
+        return
+
     # 2) 분석
     overall, by_market = analyzer.market_strength(df)
     by_market = attach_market_indices(by_market, data_collector, date_str, bool(args.date))
@@ -188,6 +230,17 @@ def main(argv=None):
     tiers_common = analyzer.build_tiers(df, common_only=True)
     top_value = analyzer.top_trading_value(df, n=30)
     top_value_common = analyzer.top_trading_value(df, n=30, common_only=True)
+
+    prev_frames = load_prev_market_frames(data_dir, date_str, config.VOLUME_SURGE_AVG_DAYS)
+    if len(prev_frames) >= config.VOLUME_SURGE_MIN_DAYS:
+        top_volume = analyzer.volume_surge_top(df, prev_frames)
+        top_volume_common = analyzer.volume_surge_top(df, prev_frames, common_only=True)
+        print(f"  · 거래량 급증: 과거 {len(prev_frames)}거래일 평균 대비 / "
+              f"전종목 {len(top_volume)} · 보통주 {len(top_volume_common)}")
+    else:
+        top_volume = top_volume_common = None
+        print(f"  · 거래량 급증: 과거 CSV {len(prev_frames)}개 (최소 "
+              f"{config.VOLUME_SURGE_MIN_DAYS}개 필요) — 섹션 생략")
     theme_map = load_theme_map(date_str, data_collector, "naver")
     print(f"  · 테마 매핑 수: {len(theme_map):,}  (수기 큐레이션, 미분류 제외)")
 
@@ -217,6 +270,8 @@ def main(argv=None):
         big_theme=big_theme,
         top_value=top_value,
         top_value_common=top_value_common,
+        top_volume=top_volume,
+        top_volume_common=top_volume_common,
     )
 
     elapsed = time.time() - started

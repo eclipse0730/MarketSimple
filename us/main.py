@@ -123,6 +123,8 @@ def main(argv=None):
                     help="HTML 리포트 디자인 모드 (기본: mode1)")
     ap.add_argument("--force", action="store_true",
                     help="기존 날짜 CSV/리포트를 다시 수집")
+    ap.add_argument("--collector", action="store_true",
+                    help="CSV 수집/저장 단계까지만 실행하고 리포트 생성은 건너뜀")
     args = ap.parse_args(argv)
 
     started = time.time()
@@ -157,6 +159,13 @@ def main(argv=None):
             raise SystemExit(f"  · [오류] 미국장 EOD 수집 실패: {exc}") from exc
         print(f"  · 수집 종목 수: {len(df):,}")
         report.write_csv(df, csv_path)
+
+    if args.collector:
+        elapsed = time.time() - started
+        print("  · --collector 지정: CSV 수집 단계에서 종료")
+        print(f"CSV : {csv_path}")
+        print(f"{elapsed:.1f}초")
+        return
 
     # 2) 분석
     overall, by_market = analyzer.market_strength(df)

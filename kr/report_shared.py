@@ -95,6 +95,13 @@ def _section_icon(name, label):
             '<path d="M7.7 9.2l1.5 5.6 2.8-5.6 2.8 5.6 1.5-5.6"/>'
             '<path d="M7.3 12h9.4"/>'
         ),
+        "volume": (
+            '<path d="M5 19.5V11"/>'
+            '<path d="M10 19.5V5"/>'
+            '<path d="M15 19.5v-6"/>'
+            '<path d="M20 19.5V8"/>'
+            '<path d="M3.5 19.5h17"/>'
+        ),
         "tier": (
             '<path d="M12 4.7l2.1 4.2 4.6.7-3.3 3.2.8 4.6-4.2-2.2-4.2 2.2.8-4.6-3.3-3.2 4.6-.7z"/>'
         ),
@@ -254,7 +261,25 @@ def _section_tiers(tiers, theme, tiers_common=None):
 TV_COLLAPSE_LIMIT = 10
 
 
-def _tv_chip(i, r):
+def _tv_value_meta(r):
+    """거래대금 섹션 메타: 등락률 + 거래대금."""
+    cls = _cls(r.등락률)
+    return (
+        f'<span class="tv-rate mono {cls}">{_fmt(r.등락률)}%</span>'
+        f'<span class="tv-a mono">{_fmt_amount(r.거래대금)}</span>'
+    )
+
+
+def _tv_volume_meta(r):
+    """거래량 급증 섹션 메타: 배율(x) 강조 + 등락률."""
+    cls = _cls(r.등락률)
+    return (
+        f'<span class="tv-mult mono">{r.거래량배율:.1f}x</span>'
+        f'<span class="tv-rate mono {cls}">{_fmt(r.등락률)}%</span>'
+    )
+
+
+def _tv_chip(i, r, meta_fn):
     code = str(r.종목코드).zfill(6)
     url = config.STOCK_URL_TEMPLATE.format(code=code, code6=code, symbol=code)
     cls = _cls(r.등락률)
@@ -267,20 +292,19 @@ def _tv_chip(i, r):
         f'<span class="tv-r mono">{i}</span>'
         f'<span class="tv-n">{r.종목명}</span>'
         f'</span>'
-        f'<span class="tv-meta">'
-        f'<span class="tv-rate mono {cls}">{_fmt(r.등락률)}%</span>'
-        f'<span class="tv-a mono">{_fmt_amount(r.거래대금)}</span>'
-        f'</span></a>'
+        f'<span class="tv-meta">{meta_fn(r)}</span></a>'
     )
 
 
-def _tv_chip_grid(rows, grid_cls):
+def _tv_chip_grid(rows, grid_cls, meta_fn):
     all_rows = list(rows.itertuples())
     visible = all_rows[:TV_COLLAPSE_LIMIT]
     hidden = all_rows[TV_COLLAPSE_LIMIT:]
-    chips = "".join(_tv_chip(i + 1, r) for i, r in enumerate(visible))
+    chips = "".join(_tv_chip(i + 1, r, meta_fn) for i, r in enumerate(visible))
     if hidden:
-        hidden_chips = "".join(_tv_chip(i + TV_COLLAPSE_LIMIT + 1, r) for i, r in enumerate(hidden))
+        hidden_chips = "".join(
+            _tv_chip(i + TV_COLLAPSE_LIMIT + 1, r, meta_fn) for i, r in enumerate(hidden)
+        )
         chips += f"""
         <details class="tv-more">
           <summary class="mono">+{len(hidden)}개 더 보기</summary>
@@ -289,28 +313,43 @@ def _tv_chip_grid(rows, grid_cls):
     return f'<div class="tv-chips {grid_cls}">{chips}</div>'
 
 
-def _section_top_value(top_value, top_value_common=None):
-    if top_value is None or not len(top_value):
+def _tv_section(*, icon, title, all_rows, common_rows, toggle_id, meta_fn):
+    """거래대금/거래량 등 '순위 칩 그리드 + 보통주 토글' 공용 섹션."""
+    if all_rows is None or not len(all_rows):
         return ""
 
-    all_grid = _tv_chip_grid(top_value, "tv-all")
-    has_common = top_value_common is not None and len(top_value_common)
+    all_grid = _tv_chip_grid(all_rows, "tv-all", meta_fn)
+    has_common = common_rows is not None and len(common_rows)
 
     if has_common:
-        common_grid = _tv_chip_grid(top_value_common, "tv-common")
-        toggle, switch = _rep_switch("tvToggle")
+        common_grid = _tv_chip_grid(common_rows, "tv-common", meta_fn)
+        toggle, switch = _rep_switch(toggle_id)
     else:
-        common_grid = ""
-        toggle = ""
-        switch = ""
+        common_grid = toggle = switch = ""
 
     return f"""
     <section class="reveal tv-section">
       {toggle}
-      <div class="sec-head">{_section_icon("money", "거래대금 Top30")}<h2>거래대금 Top30</h2>{switch}</div>
+      <div class="sec-head">{_section_icon(icon, title)}<h2>{title}</h2>{switch}</div>
       {common_grid}
       {all_grid}
     </section>"""
+
+
+def _section_top_value(top_value, top_value_common=None):
+    return _tv_section(
+        icon="money", title="거래대금 Top30",
+        all_rows=top_value, common_rows=top_value_common,
+        toggle_id="tvToggle", meta_fn=_tv_value_meta,
+    )
+
+
+def _section_top_volume(top_volume, top_volume_common=None):
+    return _tv_section(
+        icon="volume", title="거래량 급증 Top30",
+        all_rows=top_volume, common_rows=top_volume_common,
+        toggle_id="tvolToggle", meta_fn=_tv_volume_meta,
+    )
 
 
 def _sector_chip(row):
@@ -415,11 +454,12 @@ def _section_heatmap(big_theme):
     </section>"""
 
 
-def write_html(path, *, date_str, session, generated_at, overall, by_market, tiers, top=None, bottom=None, sector_top=None, sector_bottom=None, sector_tiers=None, sector_market_avg=None, big_theme=None, top_value=None, top_value_common=None, tiers_common=None, theme_name="mode1"):
+def write_html(path, *, date_str, session, generated_at, overall, by_market, tiers, top=None, bottom=None, sector_top=None, sector_bottom=None, sector_tiers=None, sector_market_avg=None, big_theme=None, top_value=None, top_value_common=None, top_volume=None, top_volume_common=None, tiers_common=None, theme_name="mode1"):
     theme = get_theme(theme_name)
     body = _section_market(by_market)
     #body += _section_heatmap(big_theme)
     body += _section_top_value(top_value, top_value_common)
+    body += _section_top_volume(top_volume, top_volume_common)
     body += _section_tiers(tiers, theme, tiers_common)
     if sector_tiers:
         body += _section_sector_tiers(sector_tiers, sector_market_avg, theme)
@@ -672,8 +712,10 @@ _PAGE = """<!doctype html>
 
   /* trading value top — 2줄 캐주얼 칩 */
   .tv-chips {{ display:grid; grid-template-columns:repeat(5, minmax(0, 1fr)); gap:9px;
-               grid-auto-rows:64px; }}
-  .tv-more {{ grid-column:1 / -1; margin-top:4px; }}
+               grid-auto-rows:auto; align-items:start; }}
+  .tv-chips > .tv-chip {{ height:64px; }}
+  /* 펼치기 블록: 그리드 전체 폭을 차지하되 높이는 내용에 따라 자유롭게 */
+  .tv-more {{ grid-column:1 / -1; align-self:start; margin-top:4px; }}
   .tv-more summary {{
     display:inline-flex; align-items:center; height:30px; cursor:pointer;
     color:var(--chip-text); border:1px solid var(--line);
@@ -685,7 +727,8 @@ _PAGE = """<!doctype html>
     font-family:var(--sans); font-size:11px; font-weight:700; }}
   .tv-more[open] summary::after {{ content:"접기"; }}
   .tv-more-grid {{ display:grid; grid-template-columns:repeat(5, minmax(0, 1fr));
-                   gap:9px; grid-auto-rows:64px; margin-top:9px; }}
+                   gap:9px; grid-auto-rows:auto; align-items:start; margin-top:9px; }}
+  .tv-more-grid > .tv-chip {{ height:64px; }}
   .tv-chips.tv-all {{ display:none; }}
   .rep-toggle:checked ~ .tv-chips.tv-common {{ display:none; }}
   .rep-toggle:checked ~ .tv-chips.tv-all {{ display:grid; }}
@@ -714,6 +757,11 @@ _PAGE = """<!doctype html>
   .tv-a {{ flex:0 1 auto; min-width:0; max-width:100%; overflow:hidden; text-overflow:ellipsis;
            margin-left:auto; font-size:12.5px; line-height:1; font-weight:950; color:var(--strong);
            white-space:nowrap; padding:3px 0; letter-spacing:.01em; }}
+  /* 거래량 급증: 배율 강조 알약 (좌) + 등락률 (우) */
+  .tv-mult {{ flex:0 0 auto; font-size:11.5px; line-height:1; font-weight:900; white-space:nowrap;
+              color:#fff; padding:3px 8px; border-radius:999px; letter-spacing:.01em;
+              background:linear-gradient(135deg,var(--accent),var(--up)); }}
+  .tv-meta .tv-mult ~ .tv-rate {{ margin-left:auto; }}
 
   footer {{ margin-top:32px; padding-top:20px; text-align:center; font-family:var(--round);
             font-size:11.5px; color:var(--faint); letter-spacing:.02em; font-weight:600; }}
@@ -748,8 +796,9 @@ _PAGE = """<!doctype html>
     .heat-cell .h-val {{ font-size:20px; }}
     .theme-item {{ grid-template-columns:26px 1fr 60px 38px; }}
     .theme-item .t-gauge {{ display:none; }}
-    .tv-chips {{ grid-template-columns:repeat(2, minmax(0, 1fr)); gap:7px; grid-auto-rows:58px; }}
-    .tv-more-grid {{ grid-template-columns:repeat(2, minmax(0, 1fr)); gap:7px; grid-auto-rows:58px; }}
+    .tv-chips {{ grid-template-columns:repeat(2, minmax(0, 1fr)); gap:7px; grid-auto-rows:auto; }}
+    .tv-more-grid {{ grid-template-columns:repeat(2, minmax(0, 1fr)); gap:7px; grid-auto-rows:auto; }}
+    .tv-chips > .tv-chip, .tv-more-grid > .tv-chip {{ height:58px; }}
     .mkt-head {{ flex-wrap:wrap; }}
     .mkt-head-idx {{ width:100%; justify-content:flex-start; flex-wrap:wrap; }}
     .tv-chip {{ padding:9px 10px; gap:7px; }}
@@ -829,6 +878,7 @@ _PAGE = """<!doctype html>
   @media (max-width:430px) {{
     .tv-chips {{ grid-template-columns:1fr; grid-auto-rows:auto; }}
     .tv-more-grid {{ grid-template-columns:1fr; grid-auto-rows:auto; }}
+    .tv-chips > .tv-chip, .tv-more-grid > .tv-chip {{ height:auto; }}
     .tv-chip {{ min-height:44px; flex-direction:row; align-items:center; gap:8px; padding:8px 10px; }}
     .tv-chip .tv-top {{ flex:1 1 auto; min-width:0; overflow:hidden; }}
     .tv-chip .tv-meta {{ flex:0 0 120px; flex-direction:row; gap:6px; justify-content:flex-end; }}
