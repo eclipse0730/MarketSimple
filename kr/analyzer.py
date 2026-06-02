@@ -6,7 +6,7 @@
 - theme_analysis  : 테마별 평균 등락률 (상위/하위 10개)
 """
 
-import config
+from . import config
 
 FUND_PREFIXES = (
     "KODEX", "TIGER", "ACE", "RISE", "SOL", "PLUS", "HANARO", "KOSEF",

@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """고정된 리포트 구조와 데이터 노출 로직을 담당하는 공유 렌더러."""
 
-import config
-from report_themes import get_theme
+from . import config
+from .report_themes import get_theme
 
 SESSION_LABEL = {"snapshot": "스냅샷"}
 

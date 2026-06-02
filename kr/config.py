@@ -4,6 +4,10 @@
 - 동작을 바꾸고 싶으면 보통 이 파일만 고치면 됩니다.
 """
 
+import os
+
+BASE_DIR = os.path.dirname(__file__)
+
 # ──────────────────────────────────────────────
 # 티어 정의: (티어이름, 하한[포함], 상한[미포함])
 # 모든 등락률은 정확히 하나의 티어에만 들어갑니다. (0.00% 는 C 티어)
@@ -31,10 +35,10 @@ MAX_PER_TIER = None
 MIN_THEME_STOCKS = 2
 
 # 테마 매핑 파일 (종목코드, 종목명, 테마)
-THEME_MAP_FILE = "theme_map.csv"
+THEME_MAP_FILE = os.path.join(BASE_DIR, "theme_map.csv")
 
 # 결과물 저장 폴더
-OUTPUT_DIR = "output"
+OUTPUT_DIR = os.path.join("output", "kr")
 DATA_OUTPUT_DIR = "data"
 REPORT_OUTPUT_DIR = "report"
 THEME_OUTPUT_DIR = "theme"

@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """Mode 2 테마 래퍼."""
 
-from report_shared import write_csv
-from report_shared import write_html as _write_shared_html
+from .report_shared import write_csv
+from .report_shared import write_html as _write_shared_html
 
 
 def write_html(path, *, date_str, session, generated_at, overall, by_market, tiers, top, bottom):

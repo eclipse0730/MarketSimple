@@ -8,7 +8,7 @@
 한국 관습대로 상승은 빨강, 하락은 파랑으로 표기합니다.
 """
 
-import config
+from . import config
 
 SESSION_LABEL = {"snapshot": "스냅샷"}
 
