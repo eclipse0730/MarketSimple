@@ -3,9 +3,7 @@
 Market Brief V1 — 실행 진입점
 
 사용법:
-  python main.py                      # 현재 시각 기준으로 세션 자동 판별, 실데이터 수집
-  python main.py --session morning    # 오전장 리포트 강제
-  python main.py --session close      # 마감장 리포트 강제
+  python main.py                      # 현재 시각 기준 스냅샷 수집
   python main.py --date 20260530      # 특정 날짜 (YYYYMMDD)
 """
 
@@ -17,34 +15,18 @@ from datetime import datetime
 import pandas as pd
 
 import config
-import collector as collector_fdr
-import collector_naver
+import collector as data_collector
 import analyzer
 import report
 import report_mode1
 import report_mode2
-import report_mode3
-import report_mode4
 
 
 REPORT_MODES = {
     "classic": report,
     "mode1": report_mode1,
     "mode2": report_mode2,
-    "mode3": report_mode3,
-    "mode4": report_mode4,
 }
-
-COLLECTORS = {
-    "fdr": collector_fdr,
-    "naver": collector_naver,
-}
-
-
-def guess_session() -> str:
-    """14시 이전이면 오전장(morning), 이후면 마감장(close)."""
-    return "morning" if datetime.now().hour < 14 else "close"
-
 
 def load_theme_map(date_str: str, collector_module, source_name: str):
     maps = []
@@ -136,20 +118,16 @@ def parse_date(date_str: str) -> str:
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Market Brief V1")
-    ap.add_argument("--session", choices=["morning", "close"], help="리포트 세션")
     ap.add_argument("--date", type=parse_date, help="기준일 YYYYMMDD (예: 20260529)")
     ap.add_argument("--mode", choices=sorted(REPORT_MODES), default="mode1",
                     help="HTML 리포트 디자인 모드 (기본: mode1)")
-    ap.add_argument("--source", choices=sorted(COLLECTORS), default="naver",
-                    help="데이터 수집 소스 (기본: naver)")
     ap.add_argument("--force", action="store_true",
-                    help="기존 CSV가 있어도 데이터를 다시 수집")
+                    help="기존 날짜 CSV/리포트를 현재 스냅샷으로 갱신")
     args = ap.parse_args(argv)
 
     started = time.time()
     date_str = args.date or datetime.now().strftime("%Y%m%d")
-    session = args.session or guess_session()
-    collector = COLLECTORS[args.source]
+    session = "snapshot"
 
     data_dir = os.path.join(config.OUTPUT_DIR, config.DATA_OUTPUT_DIR)
     report_dir = os.path.join(config.OUTPUT_DIR, config.REPORT_OUTPUT_DIR)
@@ -158,11 +136,11 @@ def main(argv=None):
     os.makedirs(report_dir, exist_ok=True)
     os.makedirs(theme_dir, exist_ok=True)
 
-    csv_path = os.path.join(data_dir, f"market_{date_str}_{session}.csv")
+    csv_path = os.path.join(data_dir, f"market_{date_str}.csv")
     theme_map_path = os.path.join(theme_dir, f"theme_map_{date_str}.csv")
     html_path = os.path.join(report_dir, f"한국증시 DailyTier [{date_str}]_{args.mode}.html")
 
-    print(f"▶ Market Brief V1  |  {date_str}  |  {session}  |  source={args.source}")
+    print(f"▶ Market Brief V1  |  {date_str}")
 
     # 1) 수집
     if os.path.exists(csv_path) and not args.force:
@@ -173,16 +151,16 @@ def main(argv=None):
     else:
         if args.force and os.path.exists(csv_path):
             print("  · --force 지정: 기존 CSV를 무시하고 재수집")
-        df = collector.collect(date_str, historical=bool(args.date))
+        df = data_collector.collect(date_str, historical=bool(args.date))
         print(f"  · 수집 종목 수: {len(df):,}")
         report.write_csv(df, csv_path)
 
     # 2) 분석
     overall, by_market = analyzer.market_strength(df)
-    by_market = attach_market_indices(by_market, collector, date_str, bool(args.date))
-    by_market = attach_market_flows(by_market, collector, date_str, bool(args.date))
+    by_market = attach_market_indices(by_market, data_collector, date_str, bool(args.date))
+    by_market = attach_market_flows(by_market, data_collector, date_str, bool(args.date))
     tiers = analyzer.build_tiers(df)
-    theme_map = load_theme_map(date_str, collector, args.source)
+    theme_map = load_theme_map(date_str, data_collector, "naver")
     theme_map = complete_theme_map(df, theme_map)
     print(f"  · 테마 매핑 수: {len(theme_map):,}")
     top, bottom = analyzer.theme_analysis(df, theme_map)

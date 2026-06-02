@@ -10,7 +10,7 @@
 
 import config
 
-SESSION_LABEL = {"morning": "오전장 (11:59 기준)", "close": "장마감"}
+SESSION_LABEL = {"snapshot": "스냅샷"}
 
 
 def write_csv(df, path):
