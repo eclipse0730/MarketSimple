@@ -4,7 +4,7 @@
 from . import config
 from .report_themes import get_theme
 
-SESSION_LABEL = {"snapshot": "스냅샷"}
+SESSION_LABEL = {"snapshot": "스냅샷", "close": "종가"}
 
 TIER_COLLAPSE_LIMIT = 30
 TIER_COLLAPSE_LIMITS = {"C": 10, "D": 10, "E": 10}
@@ -36,13 +36,15 @@ def _fmt_flow(value):
 
 
 def _fmt_amount(value):
-    """거래대금(원) → 조/억원 단위 컴팩트 표기."""
+    """거래대금(USD) 컴팩트 표기."""
     if value is None:
         return "N/A"
     v = float(value)
-    if v >= 1e12:
-        return f"{v / 1e12:.1f}조"
-    return f"{round(v / 1e8):,}억"
+    if v >= 1e9:
+        return f"${v / 1e9:.1f}B"
+    if v >= 1e6:
+        return f"${v / 1e6:.0f}M"
+    return f"${v:,.0f}"
 
 
 def _strength_bar(c):
@@ -72,7 +74,7 @@ def _market_flow_row(c):
 
 
 def _stock_chip(row):
-    code = str(row.종목코드).zfill(6)
+    code = str(row.종목코드)
     url = config.STOCK_URL_TEMPLATE.format(code=code, code6=code, symbol=code)
     return (
         f'<a class="chip {_cls(row.등락률)}" href="{url}" target="_blank" rel="noopener noreferrer">'
@@ -84,23 +86,51 @@ def _stock_chip(row):
 # ──────────────────────────────────────────────
 # sections
 # ──────────────────────────────────────────────
-def _metric_cards(c):
-    """시장별 상승/보합/하락 카드."""
+def _section_summary(overall):
+    c = overall
+    # 시장 강도 한줄 판정 (상승 비율 기준)
+    up = c["up_pct"]
+    if up >= 65:
+        verdict, vclass = "강세 우위", "up"
+    elif up >= 55:
+        verdict, vclass = "매수 우위", "up"
+    elif up >= 45:
+        verdict, vclass = "중립 / 혼조", "flat"
+    elif up >= 35:
+        verdict, vclass = "매도 우위", "down"
+    else:
+        verdict, vclass = "약세 우위", "down"
+
     return f"""
-          <div class="metrics mkt-metrics">
-            <div class="metric up-card">
-              <div class="m-label up">상승</div>
-              <div class="m-value mono up">{c['up']:,}<span class="m-pct">{c['up_pct']}%</span></div>
-            </div>
-            <div class="metric flat-card">
-              <div class="m-label flat">보합</div>
-              <div class="m-value mono flat">{c['flat']:,}<span class="m-pct">{c['flat_pct']}%</span></div>
-            </div>
-            <div class="metric down-card">
-              <div class="m-label down">하락</div>
-              <div class="m-value mono down">{c['down']:,}<span class="m-pct">{c['down_pct']}%</span></div>
-            </div>
-          </div>"""
+    <section class="reveal">
+      <div class="sec-head">
+        <span class="num">01</span><h2>시장 요약</h2>
+        <span class="verdict {vclass}">{verdict}</span>
+      </div>
+      <div class="summary">
+        <div class="metrics">
+          <!--
+          <div class="metric">
+            <div class="m-label">전체 종목</div>
+            <div class="m-value mono">{c['total']:,}</div>
+          </div>
+          -->
+          <div class="metric up-card">
+            <div class="m-label up">상승</div>
+            <div class="m-value mono up">{c['up']:,}<span class="m-pct">{c['up_pct']}%</span></div>
+          </div>
+          <div class="metric flat-card">
+            <div class="m-label flat">보합</div>
+            <div class="m-value mono flat">{c['flat']:,}<span class="m-pct">{c['flat_pct']}%</span></div>
+          </div>
+          <div class="metric down-card">
+            <div class="m-label down">하락</div>
+            <div class="m-value mono down">{c['down']:,}<span class="m-pct">{c['down_pct']}%</span></div>
+          </div>
+        </div>
+        {_strength_bar(c)}
+      </div>
+    </section>"""
 
 
 def _section_market(by_market):
@@ -116,24 +146,30 @@ def _section_market(by_market):
         <div class="mkt-card">
           <div class="mkt-head">
             <h3>{m}</h3>
-            <span class="mkt-head-idx">
-              <span class="mkt-index mono">{_fmt_index(c.get('index_value'))}</span>
-              <span class="mkt-rate mono {rate_cls}">{index_rate_label}</span>
-              <span class="mkt-change mono {rate_cls}">{index_change_label}</span>
-            </span>
+            <span class="mkt-total mono">{c['total']:,}</span>
           </div>
-          {_metric_cards(c)}
+          <div class="mkt-index-row">
+            <span class="mkt-index mono">{_fmt_index(c.get('index_value'))}</span>
+            <span class="mkt-rate mono {rate_cls}">{index_rate_label}</span>
+            <span class="mkt-change mono {rate_cls}">{index_change_label}</span>
+          </div>
           {_strength_bar(c)}
+          <div class="mkt-row">
+            <span class="up">▲ {c['up']:,}</span>
+            <span class="flat">— {c['flat']:,}</span>
+            <span class="down">▼ {c['down']:,}</span>
+          </div>
           {_market_flow_row(c)}
         </div>"""
     return f"""
     <section class="reveal">
-      <div class="sec-head"><span class="num">01</span><h2>시장별 요약</h2></div>
+      <div class="sec-head"><span class="num">02</span><h2>시장별 요약</h2></div>
+        <!--<span class="sec-note">지수 등락률 · 카운트는<br> 보통주 기준</span></div>-->
       <div class="mkt-grid">{cards}</div>
     </section>"""
 
 
-def _tier_rows(tiers, theme):
+def _section_tiers(tiers, theme):
     rows = ""
     tier_colors = theme["tier_colors"]
     for name, lo, hi in config.TIERS:
@@ -177,44 +213,17 @@ def _tier_rows(tiers, theme):
           </div>
           <div class="tier-stocks">{chips}</div>
         </div>"""
-    return rows
-
-
-def _rep_switch(toggle_id):
-    """보통주(기본) ↔ 전종목 토글 스위치 + 숨김 체크박스."""
-    toggle = f'<input type="checkbox" class="rep-toggle" id="{toggle_id}">'
-    switch = f"""
-        <label class="rep-switch" for="{toggle_id}">
-          <span class="seg seg-l">보통주</span>
-          <span class="seg seg-r">전종목</span>
-        </label>"""
-    return toggle, switch
-
-
-def _section_tiers(tiers, theme, tiers_common=None):
-    all_rows = _tier_rows(tiers, theme)
-    has_common = tiers_common is not None
-
-    if has_common:
-        common_rows = _tier_rows(tiers_common, theme)
-        toggle, switch = _rep_switch("tierToggle")
-        common_block = f'<div class="tiers tiers-common">{common_rows}</div>'
-    else:
-        toggle = switch = common_block = ""
-
     return f"""
     <section class="reveal">
-      {toggle}
-      <div class="sec-head"><span class="num">02</span><h2>티어 분포</h2>{switch}</div>
-      {common_block}
-      <div class="tiers tiers-all">{all_rows}</div>
+      <div class="sec-head"><span class="num">03</span><h2>티어 분포</h2></div>
+      <div class="tiers">{rows}</div>
     </section>"""
 
 
 def _tv_chip_grid(rows, grid_cls):
     chips = ""
     for i, r in enumerate(rows.itertuples(), 1):
-        code = str(r.종목코드).zfill(6)
+        code = str(r.종목코드)
         url = config.STOCK_URL_TEMPLATE.format(code=code, code6=code, symbol=code)
         cls = _cls(r.등락률)
         chips += f"""
@@ -240,7 +249,12 @@ def _section_top_value(top_value, top_value_common=None):
 
     if has_common:
         common_grid = _tv_chip_grid(top_value_common, "tv-common")
-        toggle, switch = _rep_switch("tvToggle")
+        toggle = '<input type="checkbox" class="tv-toggle-input" id="tvToggle">'
+        switch = """
+        <label class="tv-switch" for="tvToggle">
+          <span class="seg seg-all">전종목</span>
+          <span class="seg seg-common">보통주</span>
+        </label>"""
     else:
         common_grid = ""
         toggle = ""
@@ -249,9 +263,9 @@ def _section_top_value(top_value, top_value_common=None):
     return f"""
     <section class="reveal tv-section">
       {toggle}
-      <div class="sec-head"><span class="num">03</span><h2>거래대금 상위</h2>{switch}</div>
-      {common_grid}
+      <div class="sec-head"><span class="num">04</span><h2>거래대금 상위</h2>{switch}</div>
       {all_grid}
+      {common_grid}
     </section>"""
 
 
@@ -290,11 +304,12 @@ def _section_themes(top, bottom):
     </section>"""
 
 
-def write_html(path, *, date_str, session, generated_at, overall, by_market, tiers, top, bottom, top_value=None, top_value_common=None, tiers_common=None, theme_name="mode1"):
+def write_html(path, *, date_str, session, generated_at, overall, by_market, tiers, top, bottom, top_value=None, top_value_common=None, theme_name="mode1"):
     theme = get_theme(theme_name)
     body = (
-        _section_market(by_market)
-        + _section_tiers(tiers, theme, tiers_common)
+        _section_summary(overall)
+        + _section_market(by_market)
+        + _section_tiers(tiers, theme)
         + _section_top_value(top_value, top_value_common)
     #    + _section_themes(top, bottom)
     )
@@ -368,6 +383,11 @@ _PAGE = """<!doctype html>
                   letter-spacing:-.01em; color:var(--heading); }}
   .sec-note {{ margin-left:auto; font-family:var(--round); font-size:11.5px;
                color:var(--sub); letter-spacing:.03em; font-weight:600; }}
+  .verdict {{ margin-left:auto; font-family:var(--round); font-size:12px; font-weight:700;
+              padding:6px 16px; border-radius:999px; letter-spacing:.02em; }}
+  .verdict.up {{ background:var(--up-soft); color:var(--up); }}
+  .verdict.down {{ background:var(--down-soft); color:var(--down); }}
+  .verdict.flat {{ background:var(--flat-soft); color:var(--flat); }}
 
   /* summary */
   .metrics {{ display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-bottom:20px; }}
@@ -388,29 +408,26 @@ _PAGE = """<!doctype html>
 
   /* market cards */
   .mkt-grid {{ display:grid; grid-template-columns:1fr 1fr; gap:16px; }}
-  /* 시장 카드 안 상승/보합/하락 카드 (지수 밑, 컴팩트) */
-  .mkt-metrics {{ gap:8px; margin:0; }}
-  .mkt-metrics .metric {{ padding:11px 8px; border-radius:14px; }}
-  .mkt-metrics .m-label {{ font-size:11px; margin-bottom:5px; }}
-  .mkt-metrics .m-value {{ font-size:19px; gap:4px; }}
-  .mkt-metrics .m-pct {{ font-size:10.5px; }}
-  .mkt-card .bar {{ margin-top:13px; }}
   .mkt-card {{ padding:20px 22px; border-radius:20px;
               background:linear-gradient(180deg,var(--panel2),var(--panel));
               border:1px solid var(--line); }}
   .mkt-head {{ display:flex; align-items:baseline; justify-content:space-between; margin-bottom:14px; }}
   .mkt-head h3 {{ font-family:var(--round); font-size:16px; font-weight:700; margin:0;
                   letter-spacing:.04em; color:var(--heading); }}
-  .mkt-head-idx {{ display:inline-flex; align-items:baseline; gap:8px; }}
-  .mkt-index {{ font-size:17px; font-weight:850; color:var(--strong); }}
+  .mkt-index-row {{ display:flex; align-items:baseline; gap:10px; justify-content:flex-start;
+                    margin:-5px 0 12px; }}
+  .mkt-index {{ font-size:19px; font-weight:850; color:var(--strong); }}
   .mkt-rate {{ font-size:14px; font-weight:800; }}
   .mkt-change {{ font-size:12px; font-weight:750; }}
+  .mkt-total {{ font-size:14px; color:var(--sub); font-weight:600; }}
   .mkt-flow {{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px; margin-top:10px; }}
   .flow-item {{ display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px;
                 min-width:0; padding:8px 6px; border:1px solid var(--line); border-radius:12px;
                 background:color-mix(in srgb, var(--panel) 78%, transparent); font-family:var(--round);
                 font-size:11px; line-height:1.1; font-weight:700; color:var(--sub); text-align:center; }}
   .flow-item b {{ font-size:11.5px; font-weight:850; line-height:1.1; white-space:nowrap; }}
+  .mkt-row {{ display:flex; gap:18px; margin-top:13px; font-family:var(--round);
+              font-size:13.5px; font-weight:700; }}
 
   /* tiers */
   .tier-row {{ display:flex; gap:16px; padding:15px 0 15px 18px; position:relative;
@@ -511,28 +528,22 @@ _PAGE = """<!doctype html>
   .t-val {{ font-size:13.5px; font-weight:800; text-align:right; }}
   .t-cnt {{ font-size:12px; color:var(--faint); text-align:right; font-weight:600; }}
 
-  /* 보통주(기본) ↔ 전종목 공용 토글 스위치 */
-  .rep-toggle {{ position:absolute; width:0; height:0; opacity:0; pointer-events:none; }}
-  .rep-switch {{ margin-left:auto; display:inline-flex; gap:2px; cursor:pointer;
-                 background:var(--flat-soft); border-radius:999px; padding:3px;
-                 font-family:var(--round); user-select:none; }}
-  .rep-switch .seg {{ padding:4px 13px; border-radius:999px; font-size:11.5px; font-weight:700;
-                      color:var(--sub); transition:color .18s ease, background .18s ease; }}
-  .rep-switch .seg-l {{ background:linear-gradient(135deg,var(--accent),var(--up)); color:#fff; }}
-  .rep-toggle:checked ~ .sec-head .rep-switch .seg-l {{ background:transparent; color:var(--sub); }}
-  .rep-toggle:checked ~ .sec-head .rep-switch .seg-r {{
+  /* trading value top — 2줄 캐주얼 칩 + 전종목/보통주 토글 */
+  .tv-toggle-input {{ position:absolute; width:0; height:0; opacity:0; pointer-events:none; }}
+  .tv-switch {{ margin-left:auto; display:inline-flex; gap:2px; cursor:pointer;
+                background:var(--flat-soft); border-radius:999px; padding:3px;
+                font-family:var(--round); user-select:none; }}
+  .tv-switch .seg {{ padding:4px 13px; border-radius:999px; font-size:11.5px; font-weight:700;
+                     color:var(--sub); transition:color .18s ease, background .18s ease; }}
+  .tv-switch .seg-all {{ background:linear-gradient(135deg,var(--accent),var(--up)); color:#fff; }}
+  .tv-toggle-input:checked ~ .sec-head .tv-switch .seg-all {{ background:transparent; color:var(--sub); }}
+  .tv-toggle-input:checked ~ .sec-head .tv-switch .seg-common {{
       background:linear-gradient(135deg,var(--accent),var(--up)); color:#fff; }}
 
-  /* 토글 콘텐츠 전환 (기본=보통주 노출, 체크=전종목 노출) */
-  .tiers.tiers-all {{ display:none; }}
-  .rep-toggle:checked ~ .tiers.tiers-common {{ display:none; }}
-  .rep-toggle:checked ~ .tiers.tiers-all {{ display:block; }}
-
-  /* trading value top — 2줄 캐주얼 칩 */
   .tv-chips {{ display:flex; flex-wrap:wrap; gap:9px; }}
-  .tv-chips.tv-all {{ display:none; }}
-  .rep-toggle:checked ~ .tv-chips.tv-common {{ display:none; }}
-  .rep-toggle:checked ~ .tv-chips.tv-all {{ display:flex; }}
+  .tv-chips.tv-common {{ display:none; }}
+  .tv-toggle-input:checked ~ .tv-chips.tv-all {{ display:none; }}
+  .tv-toggle-input:checked ~ .tv-chips.tv-common {{ display:flex; }}
 
   .tv-chip {{ display:inline-flex; align-items:center; gap:10px; text-decoration:none;
               border-radius:16px; padding:8px 14px; min-width:140px;

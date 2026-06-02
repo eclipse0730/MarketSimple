@@ -14,6 +14,7 @@ pip install -r requirements.txt
 ```bash
 python main.py                    # 기본: KR, 네이버 금융, 로그인 불필요
 python main.py --market kr        # 한국 시장 명시 실행
+python main.py --market us --date 20260529  # 미국 시장 EOD 리포트
 python main.py --date 20260529    # 특정 날짜 리포트
 python main.py --force            # 같은 날짜 CSV/리포트를 현재 스냅샷으로 갱신
 python main.py --mode classic     # 기존 HTML 디자인
@@ -31,11 +32,20 @@ python main.py --mode mode2       # 공유 레이아웃 + 다크 테마
 
 ## 데이터 소스
 
-기본 데이터 소스는 네이버 금융입니다. 로그인은 필요 없습니다.
+KR 기본 데이터 소스는 네이버 금융입니다. 로그인은 필요 없습니다.
 
 > **네이버 현재 스냅샷 특성**: 오늘 날짜이거나 날짜를 지정하지 않으면 네이버 금융의 현재 시장 페이지를 조회합니다.
 > 그래서 12:00에 돌리면 장중 값, 마감 후 돌리면 네이버에 반영된 종가 기준 값이 됩니다.
 > 과거 날짜를 `--date 20260529`처럼 지정하면 네이버 일봉 API를 종목별로 조회하므로 현재 스냅샷보다 시간이 오래 걸립니다.
+
+US 데이터 소스는 Polygon grouped daily입니다. 실행 전에 API key를 환경변수로 지정해야 합니다.
+
+```bash
+export POLYGON_API_KEY=...
+python main.py --market us --date 20260529
+```
+
+날짜를 생략하면 최근 사용 가능한 미국장 EOD 날짜를 역순으로 찾습니다.
 
 ## 리포트 구성
 
@@ -69,7 +79,10 @@ kr/                  한국 시장 구현
   report_mode1.py    mode1 테마 래퍼
   report_mode2.py    mode2 테마 래퍼
   theme_map.csv      KR 테마 매핑
-us/                  미국 시장 구현 예정
+us/                  미국 시장 구현
+  main.py            US 실행 로직
+  collector.py       Polygon EOD 데이터 수집
+  config.py          US 티어 기준·설정
 ```
 
 ## 자동 실행 (매일 12:00 / 15:40)

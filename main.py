@@ -17,7 +17,11 @@ def main(argv=None):
             rest = ["--help"]
         return kr_main(rest)
 
-    ap.error("US 버전은 아직 구현되지 않았습니다")
+    from us.main import main as us_main
+
+    if args.help:
+        rest = ["--help"]
+    return us_main(rest)
 
 
 if __name__ == "__main__":

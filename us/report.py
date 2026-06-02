@@ -132,7 +132,7 @@ def _section_themes(top, bottom):
     </section>"""
 
 
-def write_html(path, *, date_str, session, generated_at, overall, by_market, tiers, top, bottom, top_value=None, top_value_common=None, tiers_common=None):
+def write_html(path, *, date_str, session, generated_at, overall, by_market, tiers, top, bottom, top_value=None, top_value_common=None):
     body = (
         _section_summary(overall)
         + _section_market(by_market)

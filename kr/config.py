@@ -7,6 +7,12 @@
 import os
 
 BASE_DIR = os.path.dirname(__file__)
+MARKET_KEY = "kr"
+MARKET_NAME = "한국 증시"
+MARKET_SUBTITLE = "KOSPI · KOSDAQ"
+MARKETS = ("KOSPI", "KOSDAQ")
+REPORT_FILENAME_PREFIX = "한국증시 DailyTier"
+STOCK_URL_TEMPLATE = "https://finance.naver.com/item/main.naver?code={code6}"
 
 # ──────────────────────────────────────────────
 # 티어 정의: (티어이름, 하한[포함], 상한[미포함])

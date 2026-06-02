@@ -78,13 +78,8 @@ def market_strength(df):
     return overall, by_market
 
 
-def build_tiers(df, common_only=False):
-    """티어이름 → 정렬된 DataFrame 딕셔너리 반환.
-
-    common_only=True 이면 ETF/ETN/우선주/스팩 등을 제외한 보통주만 분류한다.
-    """
-    if common_only:
-        df = _summary_universe(df)
+def build_tiers(df):
+    """티어이름 → 정렬된 DataFrame 딕셔너리 반환."""
     df = df.copy()
     df["티어"] = df["등락률"].apply(_tier_of)
 

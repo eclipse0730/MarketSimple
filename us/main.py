@@ -3,7 +3,7 @@
 Market Brief V1 — 실행 진입점
 
 사용법:
-  python main.py                      # 현재 시각 기준 스냅샷 수집
+  python main.py --market us          # 최근 미국장 EOD 수집
   python main.py --date 20260530      # 특정 날짜 (YYYYMMDD)
 """
 
@@ -48,7 +48,7 @@ def load_theme_map(date_str: str, collector_module, source_name: str):
         return pd.DataFrame(columns=["종목코드", "종목명", "테마"])
 
     theme_map = pd.concat(maps, ignore_index=True)
-    theme_map["종목코드"] = theme_map["종목코드"].astype(str).str.zfill(6)
+    theme_map["종목코드"] = theme_map["종목코드"].astype(str).str.upper().str.strip()
     theme_map["테마"] = theme_map["테마"].astype(str).str.strip()
     theme_map = theme_map[theme_map["테마"] != ""]
     return theme_map.drop_duplicates(subset=["종목코드", "테마"]).reset_index(drop=True)
@@ -122,12 +122,12 @@ def main(argv=None):
     ap.add_argument("--mode", choices=sorted(REPORT_MODES), default="mode1",
                     help="HTML 리포트 디자인 모드 (기본: mode1)")
     ap.add_argument("--force", action="store_true",
-                    help="기존 날짜 CSV/리포트를 현재 스냅샷으로 갱신")
+                    help="기존 날짜 CSV/리포트를 다시 수집")
     args = ap.parse_args(argv)
 
     started = time.time()
-    date_str = args.date or datetime.now().strftime("%Y%m%d")
-    session = "snapshot"
+    date_str = data_collector.resolve_date(args.date)
+    session = "close"
 
     data_dir = os.path.join(config.OUTPUT_DIR, config.DATA_OUTPUT_DIR)
     report_dir = os.path.join(config.OUTPUT_DIR, config.REPORT_OUTPUT_DIR)
@@ -145,13 +145,16 @@ def main(argv=None):
     # 1) 수집
     if os.path.exists(csv_path) and not args.force:
         df = pd.read_csv(csv_path, dtype={"종목코드": str})
-        df["종목코드"] = df["종목코드"].astype(str).str.zfill(6)
+        df["종목코드"] = df["종목코드"].astype(str)
         print(f"  · 기존 CSV 사용: {csv_path}")
         print(f"  · 로드 종목 수: {len(df):,}")
     else:
         if args.force and os.path.exists(csv_path):
             print("  · --force 지정: 기존 CSV를 무시하고 재수집")
-        df = data_collector.collect(date_str, historical=bool(args.date))
+        try:
+            df = data_collector.collect(date_str, historical=True)
+        except RuntimeError as exc:
+            raise SystemExit(f"  · [오류] 미국장 EOD 수집 실패: {exc}") from exc
         print(f"  · 수집 종목 수: {len(df):,}")
         report.write_csv(df, csv_path)
 
@@ -160,10 +163,9 @@ def main(argv=None):
     by_market = attach_market_indices(by_market, data_collector, date_str, bool(args.date))
     by_market = attach_market_flows(by_market, data_collector, date_str, bool(args.date))
     tiers = analyzer.build_tiers(df)
-    tiers_common = analyzer.build_tiers(df, common_only=True)
     top_value = analyzer.top_trading_value(df, n=30)
     top_value_common = analyzer.top_trading_value(df, n=30, common_only=True)
-    theme_map = load_theme_map(date_str, data_collector, "naver")
+    theme_map = load_theme_map(date_str, data_collector, "polygon")
     theme_map = complete_theme_map(df, theme_map)
     print(f"  · 테마 매핑 수: {len(theme_map):,}")
     top, bottom = analyzer.theme_analysis(df, theme_map)
@@ -179,7 +181,6 @@ def main(argv=None):
         overall=overall,
         by_market=by_market,
         tiers=tiers,
-        tiers_common=tiers_common,
         top=top,
         bottom=bottom,
         top_value=top_value,
