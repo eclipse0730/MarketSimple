@@ -5,9 +5,10 @@ from .report_shared import write_csv
 from .report_shared import write_html as _write_shared_html
 
 
-def write_html(path, *, date_str, session, generated_at, overall, by_market, tiers, top=None, bottom=None, sector_top=None, sector_bottom=None, sector_tiers=None, sector_market_avg=None, big_theme=None, top_value=None, top_value_common=None, top_volume=None, top_volume_common=None, tiers_common=None):
+def write_html(path, *, date_str, session, generated_at, overall, by_market, tiers, top=None, bottom=None, sector_top=None, sector_bottom=None, sector_tiers=None, sector_market_avg=None, big_theme=None, top_value=None, top_value_common=None, top_volume=None, top_volume_common=None, tiers_common=None, date_nav=None):
     _write_shared_html(
         path,
+        date_nav=date_nav,
         date_str=date_str,
         session=session,
         generated_at=generated_at,

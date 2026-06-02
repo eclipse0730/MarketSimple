@@ -14,6 +14,16 @@ MARKETS = ("KOSPI", "KOSDAQ")
 REPORT_FILENAME_PREFIX = "한국증시 DailyTier"
 STOCK_URL_TEMPLATE = "https://finance.naver.com/item/main.naver?code={code6}"
 
+# 배포 사이트 기준 URL (카톡 공유 OG 태그의 og:url/og:image 절대경로용).
+# 예: "https://username.github.io/MarketSimple" 또는 커스텀 도메인.
+# 환경변수 SITE_BASE_URL 로도 덮어쓸 수 있다. 비우면 OG의 url/image는 생략.
+SITE_BASE_URL = os.environ.get("SITE_BASE_URL", "").rstrip("/")
+
+
+def report_filename(date_str: str, mode: str) -> str:
+    """리포트 HTML 파일명 규칙(단일 출처). 날짜 네비게이션 링크도 이걸 쓴다."""
+    return f"{REPORT_FILENAME_PREFIX} [{date_str}]_{mode}.html"
+
 # ──────────────────────────────────────────────
 # 티어 정의: (티어이름, 하한[포함], 상한[미포함])
 # 모든 등락률은 정확히 하나의 티어에만 들어갑니다. (0.00% 는 C 티어)

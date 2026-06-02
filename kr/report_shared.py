@@ -2,11 +2,18 @@
 """고정된 리포트 구조와 데이터 노출 로직을 담당하는 공유 렌더러."""
 
 from html import escape
+from urllib.parse import quote
 
 from . import config
 from .report_themes import get_theme
 
-SESSION_LABEL = {"snapshot": "스냅샷"}
+SESSION_LABEL = {"snapshot": "Snapshot"}
+
+# 날짜 이동 화살표 (좌/우 chevron)
+ARROWS = {
+    "prev": '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>',
+    "next": '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>',
+}
 
 TIER_COLLAPSE_LIMIT = 30
 TIER_COLLAPSE_LIMITS = {"B": 10, "C": 10, "D": 10, "E": 10}
@@ -454,7 +461,71 @@ def _section_heatmap(big_theme):
     </section>"""
 
 
-def write_html(path, *, date_str, session, generated_at, overall, by_market, tiers, top=None, bottom=None, sector_top=None, sector_bottom=None, sector_tiers=None, sector_market_avg=None, big_theme=None, top_value=None, top_value_common=None, top_volume=None, top_volume_common=None, tiers_common=None, theme_name="mode1"):
+def _date_label(date_str):
+    return f"{date_str[:4]}.{date_str[4:6]}.{date_str[6:]}"
+
+
+def _og_tags_html(date_str, overall):
+    """카톡/SNS 공유용 Open Graph 메타태그.
+
+    og:url / og:image 는 배포 기준 URL(config.SITE_BASE_URL)이 있어야 절대경로가
+    되어 카톡 썸네일이 뜬다. 없으면 제목·설명만 넣는다(이미지 카드 없음).
+    """
+    label = _date_label(date_str)
+    title = f"{config.MARKET_NAME} 데일리 브리프 · {label}"
+    if overall:
+        desc = (f"상승 {overall.get('up', 0):,} · 하락 {overall.get('down', 0):,} · "
+                f"보합 {overall.get('flat', 0):,}  |  거래대금·거래량 Top30, 종목 Tier")
+    else:
+        desc = f"{config.MARKET_SUBTITLE} 시장 분위기 요약 — 거래대금·거래량 Top30, 종목 Tier"
+
+    tags = [
+        '<meta property="og:type" content="website">',
+        f'<meta property="og:title" content="{escape(title, quote=True)}">',
+        f'<meta property="og:description" content="{escape(desc, quote=True)}">',
+        f'<meta property="og:site_name" content="{escape(config.MARKET_NAME, quote=True)}">',
+        '<meta name="twitter:card" content="summary_large_image">',
+        f'<meta name="twitter:title" content="{escape(title, quote=True)}">',
+        f'<meta name="twitter:description" content="{escape(desc, quote=True)}">',
+    ]
+    base = config.SITE_BASE_URL
+    if base:
+        page_url = f"{base}/{config.MARKET_KEY}/{date_str}/"
+        img_url = f"{page_url}thumb.png"
+        tags += [
+            f'<meta property="og:url" content="{page_url}">',
+            f'<meta property="og:image" content="{img_url}">',
+            '<meta property="og:image:width" content="1200">',
+            '<meta property="og:image:height" content="630">',
+            f'<meta name="twitter:image" content="{img_url}">',
+        ]
+    return "\n".join(tags)
+
+
+def _date_nav_html(date_str, date_nav):
+    """상단 날짜 이동 바: ‹ 이전  현재날짜  다음 › . 링크 없으면 비활성."""
+    if not date_nav:
+        return ""
+
+    def arrow(link, label, cls, title):
+        if link:
+            href = quote(link)   # 파일명에 공백·대괄호가 있어 URL 인코딩
+            return (f'<a class="date-nav-btn {cls}" href="{href}" '
+                    f'aria-label="{title}" title="{title} ({_date_label(label)})">{ARROWS[cls]}</a>')
+        return f'<span class="date-nav-btn {cls} is-disabled" aria-hidden="true">{ARROWS[cls]}</span>'
+
+    prev_btn = arrow(date_nav.get("prev_link"), date_nav.get("prev_date"), "prev", "이전 거래일")
+    next_btn = arrow(date_nav.get("next_link"), date_nav.get("next_date"), "next", "다음 거래일")
+    return (
+        '<nav class="date-nav" aria-label="날짜 이동">'
+        f'{prev_btn}'
+        f'<span class="date-nav-cur mono">{_date_label(date_str)}</span>'
+        f'{next_btn}'
+        '</nav>'
+    )
+
+
+def write_html(path, *, date_str, session, generated_at, overall, by_market, tiers, top=None, bottom=None, sector_top=None, sector_bottom=None, sector_tiers=None, sector_market_avg=None, big_theme=None, top_value=None, top_value_common=None, top_volume=None, top_volume_common=None, tiers_common=None, date_nav=None, theme_name="mode1"):
     theme = get_theme(theme_name)
     body = _section_market(by_market)
     #body += _section_heatmap(big_theme)
@@ -464,7 +535,9 @@ def write_html(path, *, date_str, session, generated_at, overall, by_market, tie
     if sector_tiers:
         body += _section_sector_tiers(sector_tiers, sector_market_avg, theme)
     html = _PAGE.format(
-        date=f"{date_str[:4]}.{date_str[4:6]}.{date_str[6:]}",
+        date=_date_label(date_str),
+        og_tags=_og_tags_html(date_str, overall),
+        date_nav=_date_nav_html(date_str, date_nav),
         session_label=SESSION_LABEL.get(session, session),
         generated_at=generated_at,
         report_title=config.MARKET_NAME,
@@ -482,6 +555,7 @@ _PAGE = """<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Market Brief — {date} {session_label}</title>
+{og_tags}
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=Quicksand:wght@400;500;600;700&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
@@ -498,6 +572,24 @@ _PAGE = """<!doctype html>
   .wrap {{ max-width:1040px; margin:0 auto; padding:44px 24px 80px; }}
   .mono {{ font-family:var(--round); font-weight:600; font-variant-numeric:tabular-nums; }}
   .up {{ color:var(--up); }} .down {{ color:var(--down); }} .flat {{ color:var(--flat); }}
+
+  /* 날짜 이동 바 */
+  .date-nav {{ display:flex; align-items:center; justify-content:center; gap:10px;
+               margin-top:18px; }}
+  .date-nav-cur {{ min-width:118px; text-align:center; font-size:14.5px; font-weight:800;
+                   color:var(--heading); letter-spacing:.02em;
+                   padding:7px 16px; border-radius:999px;
+                   background:var(--accent-soft); }}
+  .date-nav-btn {{ display:inline-flex; align-items:center; justify-content:center;
+                   width:34px; height:34px; border-radius:50%;
+                   border:1px solid var(--line); background:var(--panel);
+                   color:var(--sub); text-decoration:none;
+                   transition:background .15s ease, color .15s ease, transform .12s ease;
+                   box-shadow:var(--section-shadow); }}
+  .date-nav-btn svg {{ width:18px; height:18px; fill:none; stroke:currentColor;
+                       stroke-width:2.2; stroke-linecap:round; stroke-linejoin:round; }}
+  .date-nav-btn:hover {{ background:var(--accent); color:#fff; transform:translateY(-1px); }}
+  .date-nav-btn.is-disabled {{ opacity:.32; pointer-events:none; box-shadow:none; }}
 
   /* header */
   header {{ position:relative; margin-bottom:34px; padding-bottom:24px; text-align:center; }}
@@ -907,6 +999,7 @@ _PAGE = """<!doctype html>
       <span>{market_subtitle}</span><span class="sep">·</span>
       <span>기준 {generated_at}</span>
     </div>
+    {date_nav}
   </header>
   {body}
   <footer>Market Brief V1 — 시장 분위기 파악용 경량 리포트 · 투자 판단의 근거가 아닙니다.</footer>

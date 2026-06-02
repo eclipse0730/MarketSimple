@@ -155,6 +155,36 @@ def load_prev_market_frames(data_dir: str, date_str: str, days: int):
     return frames
 
 
+def available_report_dates(data_dir: str) -> list[str]:
+    """리포트를 만들 수 있는(=CSV가 있는) 날짜 목록을 오름차순으로 반환."""
+    dates = []
+    for path in glob.glob(os.path.join(data_dir, "market_*.csv")):
+        m = re.search(r"market_(\d{8})\.csv$", os.path.basename(path))
+        if m:
+            dates.append(m.group(1))
+    return sorted(dates)
+
+
+def build_date_nav(date_str: str, all_dates: list[str], mode: str) -> dict:
+    """현재 날짜 기준 이전/다음 리포트 파일명(같은 폴더 상대경로)을 계산.
+
+    이전/다음이 없으면 None. 링크 대상 HTML은 일괄 빌드 시 함께 생성된다.
+    """
+    prev_link = next_link = None
+    if date_str in all_dates:
+        i = all_dates.index(date_str)
+        if i > 0:
+            prev_link = config.report_filename(all_dates[i - 1], mode)
+        if i < len(all_dates) - 1:
+            next_link = config.report_filename(all_dates[i + 1], mode)
+    return {
+        "prev_date": all_dates[all_dates.index(date_str) - 1] if prev_link else None,
+        "prev_link": prev_link,
+        "next_date": all_dates[all_dates.index(date_str) + 1] if next_link else None,
+        "next_link": next_link,
+    }
+
+
 def parse_date(date_str: str) -> str:
     """YYYYMMDD 형식의 날짜 문자열을 검증해서 반환한다."""
     try:
@@ -198,7 +228,7 @@ def main(argv=None):
 
     csv_path = os.path.join(data_dir, f"market_{date_str}.csv")
     theme_map_path = os.path.join(theme_dir, f"theme_map_{date_str}.csv")
-    html_path = os.path.join(report_dir, f"{config.REPORT_FILENAME_PREFIX} [{date_str}]_{args.mode}.html")
+    html_path = os.path.join(report_dir, config.report_filename(date_str, args.mode))
 
     print(f"▶ Market Brief V1  |  {date_str}")
 
@@ -255,6 +285,7 @@ def main(argv=None):
 
     # 3) 출력
     report.write_theme_map(theme_map, theme_map_path)
+    date_nav = build_date_nav(date_str, available_report_dates(data_dir), args.mode)
     renderer = REPORT_MODES[args.mode]
     renderer.write_html(
         html_path,
@@ -272,6 +303,7 @@ def main(argv=None):
         top_value_common=top_value_common,
         top_volume=top_volume,
         top_volume_common=top_volume_common,
+        date_nav=date_nav,
     )
 
     elapsed = time.time() - started
