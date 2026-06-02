@@ -205,7 +205,7 @@ def _section_tiers(tiers, theme, tiers_common=None):
     return f"""
     <section class="reveal">
       {toggle}
-      <div class="sec-head"><span class="num">02</span><h2>티어 분포</h2>{switch}</div>
+      <div class="sec-head"><span class="num">03</span><h2>종목 Tier</h2>{switch}</div>
       {common_block}
       <div class="tiers tiers-all">{all_rows}</div>
     </section>"""
@@ -249,55 +249,120 @@ def _section_top_value(top_value, top_value_common=None):
     return f"""
     <section class="reveal tv-section">
       {toggle}
-      <div class="sec-head"><span class="num">03</span><h2>거래대금 상위</h2>{switch}</div>
+      <div class="sec-head"><span class="num">02</span><h2>거래대금 Top30</h2>{switch}</div>
       {common_grid}
       {all_grid}
     </section>"""
 
 
-def _theme_block(rows, kind):
-    """kind: 'top' or 'bottom' — 막대 게이지 포함 테마 리스트."""
-    if not len(rows):
-        return '<div class="empty">데이터 없음</div>'
-    # 게이지 폭 정규화용 최대 절대값
-    mx = max((abs(r.평균등락률) for r in rows.itertuples()), default=1) or 1
-    items = ""
-    for i, r in enumerate(rows.itertuples(), 1):
-        cls = _cls(r.평균등락률)
-        w = min(100, abs(r.평균등락률) / mx * 100)
-        items += f"""
-        <div class="theme-item">
-          <span class="t-rank mono">{i:02d}</span>
-          <span class="t-name">{r.테마}</span>
-          <div class="t-gauge"><span class="t-fill {cls}" style="width:{w:.1f}%"></span></div>
-          <span class="t-val mono {cls}">{_fmt(r.평균등락률)}%</span>
-          <span class="t-cnt mono">{r.종목수}</span>
+def _sector_chip(row):
+    """섹터 티어 칩 — 값은 시장 대비 초과수익(%p), 색은 초과수익 부호."""
+    return (
+        f'<span class="chip {_cls(row.초과)}">'
+        f'<span class="c-name">{row.섹터}</span>'
+        f'<span class="c-rate mono">{_fmt(row.초과)}p</span></span>'
+    )
+
+
+def _sector_tier_rows(sector_tiers, theme):
+    rows = ""
+    tier_colors = theme["tier_colors"]
+    for name, lo, hi in config.SECTOR_TIERS:
+        sub = sector_tiers[name]
+        color = tier_colors.get(name, "#888")
+        if hi >= 999:
+            rng = f"+{lo:.1f}%p 이상"
+        elif lo <= -999:
+            rng = f"{hi:.1f}%p 이하"
+        elif name in config.UP_TIERS:
+            rng = f"+{lo:.1f} ~ +{hi:.1f}%p"
+        else:
+            rng = f"{lo:.1f} ~ {hi:.1f}%p"
+
+        if len(sub):
+            chips = "".join(_sector_chip(r) for r in sub.itertuples())
+            count = f'<span class="tier-count mono">{len(sub)}</span>'
+        else:
+            chips = '<span class="empty">—</span>'
+            count = ""
+
+        rows += f"""
+        <div class="tier-row" style="--tc:{color}">
+          <div class="tier-side">
+            <div class="tier-head">
+              <div class="tier-badge t-{name}">{name}</div>
+              <!--{count}-->
+            </div>
+            <div class="tier-range mono">{rng}</div>
+          </div>
+          <div class="tier-stocks">{chips}</div>
         </div>"""
-    return f'<div class="theme-list">{items}</div>'
+    return rows
 
 
-def _section_themes(top, bottom):
+def _section_sector_tiers(sector_tiers, market_avg, theme):
+    if not sector_tiers:
+        return ""
+    rows = _sector_tier_rows(sector_tiers, theme)
     return f"""
     <section class="reveal">
-      <div class="sec-head"><span class="num">04</span><h2>주도 테마</h2>
-        <span class="sec-note up">강한 테마 TOP 10</span></div>
-      {_theme_block(top, 'top')}
-    </section>
-    <section class="reveal">
-      <div class="sec-head"><span class="num">05</span><h2>소외 테마</h2>
-        <span class="sec-note down">약한 테마 TOP 10</span></div>
-      {_theme_block(bottom, 'bottom')}
+      <div class="sec-head"><span class="num">04</span><h2>섹터 Tier</h2>
+        <span class="sec-note">시장평균 {_fmt(market_avg)}% 기준 · 값은 초과수익(%p)</span></div>
+      <div class="tiers">{rows}</div>
     </section>"""
 
 
-def write_html(path, *, date_str, session, generated_at, overall, by_market, tiers, top, bottom, top_value=None, top_value_common=None, tiers_common=None, theme_name="mode1"):
+_HEAT_RANGE = 3.0  # ±3% 에서 색 포화
+
+
+def _lerp(c1, c2, t):
+    return tuple(round(a + (b - a) * t) for a, b in zip(c1, c2))
+
+
+def _heat_style(rate):
+    """평균 등락률 → 카드 배경/글자색 (한국식: 상승 빨강, 하락 파랑)."""
+    white, up, down = (255, 255, 255), (224, 49, 49), (28, 126, 214)
+    ratio = min(abs(rate) / _HEAT_RANGE, 1.0)
+    t = 0.12 + 0.88 * ratio
+    if rate > 0:
+        bg = _lerp(white, up, t)
+    elif rate < 0:
+        bg = _lerp(white, down, t)
+    else:
+        bg, t = (241, 243, 245), 0.2
+    fg = "#ffffff" if t >= 0.55 else "#212529"
+    return f"background:rgb({bg[0]},{bg[1]},{bg[2]});color:{fg}"
+
+
+def _heat_card(r):
+    return f"""
+        <div class="heat-cell" style="{_heat_style(r.평균등락률)}">
+          <span class="h-name">{r.대테마}</span>
+          <span class="h-val mono">{_fmt(r.평균등락률)}%</span>
+          <span class="h-sub">{r.종목수}종목 · ▲{r.상승} ▼{r.하락}</span>
+        </div>"""
+
+
+def _section_heatmap(big_theme):
+    if big_theme is None or not len(big_theme):
+        return ""
+    cells = "".join(_heat_card(r) for r in big_theme.itertuples())
+    return f"""
+    <section class="reveal">
+      <div class="sec-head"><span class="num">02</span><h2>대테마 히트맵</h2>
+        <span class="sec-note">평균 등락률 · 강한 → 약한</span></div>
+      <div class="heatmap">{cells}</div>
+    </section>"""
+
+
+def write_html(path, *, date_str, session, generated_at, overall, by_market, tiers, top=None, bottom=None, sector_top=None, sector_bottom=None, sector_tiers=None, sector_market_avg=None, big_theme=None, top_value=None, top_value_common=None, tiers_common=None, theme_name="mode1"):
     theme = get_theme(theme_name)
-    body = (
-        _section_market(by_market)
-        + _section_tiers(tiers, theme, tiers_common)
-        + _section_top_value(top_value, top_value_common)
-    #    + _section_themes(top, bottom)
-    )
+    body = _section_market(by_market)
+    #body += _section_heatmap(big_theme)
+    body += _section_top_value(top_value, top_value_common)
+    body += _section_tiers(tiers, theme, tiers_common)
+    if sector_tiers:
+        body += _section_sector_tiers(sector_tiers, sector_market_avg, theme)
     html = _PAGE.format(
         date=f"{date_str[:4]}.{date_str[4:6]}.{date_str[6:]}",
         session_label=SESSION_LABEL.get(session, session),
@@ -430,6 +495,7 @@ _PAGE = """<!doctype html>
   .tier-badge.t-E {{ background:linear-gradient(145deg,var(--tier-E-1),var(--tier-E-2)); color:var(--tier-E-text); }}
   .tier-badge.t-F {{ background:linear-gradient(145deg,var(--tier-F-1),var(--tier-F-2)); color:var(--tier-F-text); }}
   .tier-badge.t-G {{ background:linear-gradient(145deg,var(--tier-G-1),var(--tier-G-2)); color:var(--tier-G-text); }}
+  .tier-head {{ display:flex; align-items:center; gap:8px; }}  /* 섹터 티어: 뱃지 + 카운트 한 줄 */
   .tier-range {{ font-size:10.5px; color:var(--faint); letter-spacing:.01em; font-weight:600; }}
   .tier-count {{ font-size:11px; color:var(--sub); background:var(--flat-soft);
                  padding:2px 8px; border-radius:999px; font-weight:700; }}
@@ -492,6 +558,16 @@ _PAGE = """<!doctype html>
   .chip .c-rate {{ color:color-mix(in srgb, var(--tc) 82%, var(--chip-rate-base)); font-size:12px; font-weight:800; }}
   .empty {{ color:var(--faint); font-size:13px; }}
 
+  /* big-theme heatmap */
+  .heatmap {{ display:grid; grid-template-columns:repeat(auto-fill,minmax(152px,1fr)); gap:9px; }}
+  .heat-cell {{ border-radius:14px; padding:14px 15px 13px; min-height:88px;
+               display:flex; flex-direction:column; justify-content:center; gap:3px;
+               box-shadow:0 2px 8px rgba(0,0,0,.06); transition:transform .15s ease; }}
+  .heat-cell:hover {{ transform:translateY(-2px); }}
+  .heat-cell .h-name {{ font-size:14px; font-weight:800; letter-spacing:-.01em; }}
+  .heat-cell .h-val {{ font-size:23px; font-weight:800; letter-spacing:-.03em; line-height:1.1; }}
+  .heat-cell .h-sub {{ font-size:11px; font-weight:600; opacity:.82; }}
+
   /* themes */
   .theme-list {{ display:flex; flex-direction:column; gap:3px; }}
   .theme-item {{ display:grid; grid-template-columns:30px 1fr 150px 74px 44px;
@@ -529,13 +605,13 @@ _PAGE = """<!doctype html>
   .rep-toggle:checked ~ .tiers.tiers-all {{ display:block; }}
 
   /* trading value top — 2줄 캐주얼 칩 */
-  .tv-chips {{ display:flex; flex-wrap:wrap; gap:9px; }}
+  .tv-chips {{ display:grid; grid-template-columns:repeat(6, 1fr); gap:9px; }}
   .tv-chips.tv-all {{ display:none; }}
   .rep-toggle:checked ~ .tv-chips.tv-common {{ display:none; }}
-  .rep-toggle:checked ~ .tv-chips.tv-all {{ display:flex; }}
+  .rep-toggle:checked ~ .tv-chips.tv-all {{ display:grid; }}
 
   .tv-chip {{ display:inline-flex; align-items:center; gap:10px; text-decoration:none;
-              border-radius:16px; padding:8px 14px; min-width:140px;
+              border-radius:16px; padding:8px 14px; min-width:0;
               background:var(--chip-base); border:1px solid var(--line);
               transition:transform .14s ease, box-shadow .14s ease; }}
   .tv-chip:hover {{ transform:translateY(-2px); box-shadow:0 4px 12px rgba(216,138,168,.16); }}
@@ -573,10 +649,13 @@ _PAGE = """<!doctype html>
     .m-value {{ font-size:20px; gap:4px; }}
     .m-pct {{ font-size:10.5px; }}
     .mkt-grid {{ grid-template-columns:1fr; }}
+    .heatmap {{ grid-template-columns:repeat(2,1fr); gap:7px; }}
+    .heat-cell {{ min-height:78px; padding:12px 12px 11px; }}
+    .heat-cell .h-val {{ font-size:20px; }}
     .theme-item {{ grid-template-columns:26px 1fr 60px 38px; }}
     .theme-item .t-gauge {{ display:none; }}
-    .tv-chips {{ gap:7px; }}
-    .tv-chip {{ flex:1 1 calc(50% - 4px); min-width:0; padding:8px 12px; gap:8px; }}
+    .tv-chips {{ grid-template-columns:repeat(3, 1fr); gap:7px; }}
+    .tv-chip {{ padding:8px 12px; gap:8px; }}
     .tv-chip .tv-n {{ font-size:12.5px; }}
     .tier-row {{
       display:block;

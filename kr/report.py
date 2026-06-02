@@ -100,45 +100,72 @@ def _section_tiers(tiers):
         </div>"""
     return f"""
     <section>
-      <h2><span class="num">03</span> 티어표 <small>(좌→우, 강한 순)</small></h2>
+      <h2><span class="num">04</span> 티어표 <small>(좌→우, 강한 순)</small></h2>
       <div class="tiers">{rows}</div>
     </section>"""
 
 
-def _theme_table(rows):
-    if not len(rows):
-        return '<div class="empty">데이터 없음</div>'
-    trs = ""
-    for i, r in enumerate(rows.itertuples(), 1):
-        trs += (
-            f'<tr><td class="rank">{i}</td><td>{r.테마}</td>'
-            f'<td class="{_cls(r.평균등락률)} val">{_fmt(r.평균등락률)}%</td>'
-            f'<td class="cnt">{r.종목수}</td></tr>'
-        )
-    return f"""<table class="theme">
-      <thead><tr><th>#</th><th>테마</th><th>평균 등락률</th><th>종목수</th></tr></thead>
-      <tbody>{trs}</tbody></table>"""
-
-
-def _section_themes(top, bottom):
+def _section_sector_tiers(sector_tiers, market_avg):
+    if not sector_tiers:
+        return ""
+    rows = ""
+    for name, _lo, _hi in config.SECTOR_TIERS:
+        sub = sector_tiers[name]
+        side = "up" if name in config.UP_TIERS else "down"
+        if len(sub):
+            chips = "".join(
+                f'<span class="chip {_cls(r.초과)}">{r.섹터}<i>{_fmt(r.초과)}p</i></span>'
+                for r in sub.itertuples()
+            )
+        else:
+            chips = '<span class="empty">해당 없음</span>'
+        rows += f"""
+        <div class="tier-row">
+          <div class="tier-badge {side}">{name}</div>
+          <div class="tier-stocks">{chips}</div>
+        </div>"""
     return f"""
     <section>
-      <h2><span class="num">04</span> 강한 테마/업종 TOP 10</h2>
-      {_theme_table(top)}
-    </section>
-    <section>
-      <h2><span class="num">05</span> 약한 테마/업종 TOP 10</h2>
-      {_theme_table(bottom)}
+      <h2><span class="num">05</span> 섹터 티어 <small>(시장평균 {_fmt(market_avg)}% 대비, 값=초과수익 %p)</small></h2>
+      <div class="tiers">{rows}</div>
     </section>"""
 
 
-def write_html(path, *, date_str, session, generated_at, overall, by_market, tiers, top, bottom, top_value=None, top_value_common=None, tiers_common=None):
-    body = (
-        _section_summary(overall)
-        + _section_market(by_market)
-        + _section_tiers(tiers)
-        + _section_themes(top, bottom)
+def _heat_style(rate):
+    white, up, down = (255, 255, 255), (224, 49, 49), (28, 126, 214)
+    ratio = min(abs(rate) / 3.0, 1.0)
+    t = 0.12 + 0.88 * ratio
+    bg = white if rate == 0 else (_lerp(white, up, t) if rate > 0 else _lerp(white, down, t))
+    fg = "#fff" if (rate != 0 and t >= 0.55) else "#212529"
+    return f"background:rgb({bg[0]},{bg[1]},{bg[2]});color:{fg}"
+
+
+def _lerp(c1, c2, t):
+    return tuple(round(a + (b - a) * t) for a, b in zip(c1, c2))
+
+
+def _section_heatmap(big_theme):
+    if big_theme is None or not len(big_theme):
+        return ""
+    cells = "".join(
+        f'<div class="heat-cell" style="{_heat_style(r.평균등락률)}">'
+        f'<b>{r.대테마}</b><span class="hv">{_fmt(r.평균등락률)}%</span>'
+        f'<small>{r.종목수}종목</small></div>'
+        for r in big_theme.itertuples()
     )
+    return f"""
+    <section>
+      <h2><span class="num">03</span> 대테마 히트맵</h2>
+      <div class="heatmap">{cells}</div>
+    </section>"""
+
+
+def write_html(path, *, date_str, session, generated_at, overall, by_market, tiers, top=None, bottom=None, sector_top=None, sector_bottom=None, sector_tiers=None, sector_market_avg=None, big_theme=None, top_value=None, top_value_common=None, tiers_common=None):
+    body = _section_summary(overall) + _section_market(by_market)
+    body += _section_heatmap(big_theme)
+    body += _section_tiers(tiers)
+    if sector_tiers:
+        body += _section_sector_tiers(sector_tiers, sector_market_avg)
     html = _PAGE.format(
         date=f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:]}",
         session_label=SESSION_LABEL.get(session, session),
@@ -208,6 +235,12 @@ _PAGE = """<!doctype html>
   table.theme .rank {{ color:var(--sub); width:34px; }}
   table.theme .val {{ font-weight:700; text-align:right; }}
   table.theme .cnt {{ text-align:right; color:var(--sub); width:60px; }}
+
+  .heatmap {{ display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:8px; }}
+  .heat-cell {{ border-radius:12px; padding:13px 14px; display:flex; flex-direction:column; gap:2px; min-height:80px; justify-content:center; }}
+  .heat-cell b {{ font-size:14px; }}
+  .heat-cell .hv {{ font-size:21px; font-weight:800; }}
+  .heat-cell small {{ font-size:11px; opacity:.8; }}
 
   footer {{ text-align:center; color:var(--sub); font-size:12px; margin-top:24px; }}
   @media (max-width:640px) {{ .mkt-grid {{ grid-template-columns:1fr; }} header h1 {{ font-size:24px; }} }}

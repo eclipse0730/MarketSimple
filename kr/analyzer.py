@@ -19,8 +19,12 @@ NON_COMMON_KEYWORDS = (
 
 
 def _tier_of(rate: float):
-    for name, lo, hi in config.TIERS:
-        if lo <= rate < hi:
+    return _tier_of_value(rate, config.TIERS)
+
+
+def _tier_of_value(value: float, tiers):
+    for name, lo, hi in tiers:
+        if lo <= value < hi:
             return name
     return None
 
@@ -112,20 +116,82 @@ def top_trading_value(df, n=30, common_only=False):
     return ranked.reset_index(drop=True)
 
 
-def theme_analysis(df, theme_map):
-    """테마별 평균 등락률을 계산해 (상위10, 하위10) 반환."""
-    # 코드+테마만 사용 (종목명 충돌 방지)
-    tm = theme_map[["종목코드", "테마"]]
-    merged = df.merge(tm, on="종목코드", how="inner")
+def _group_analysis(df, group_map, col, min_stocks, n=10):
+    """그룹(테마/섹터)별 평균 등락률을 계산해 (상위n, 하위n) 반환.
+
+    반환 DataFrame 컬럼: [col, 평균등락률, 종목수]
+    """
+    # 코드+그룹만 사용 (종목명 충돌 방지)
+    gm = group_map[["종목코드", col]]
+    merged = df.merge(gm, on="종목코드", how="inner")
 
     grp = (
-        merged.groupby("테마")
+        merged.groupby(col)
         .agg(평균등락률=("등락률", "mean"), 종목수=("등락률", "size"))
         .reset_index()
     )
     grp["평균등락률"] = grp["평균등락률"].round(2)
-    grp = grp[grp["종목수"] >= config.MIN_THEME_STOCKS]
+    grp = grp[grp["종목수"] >= min_stocks]
 
-    top = grp.sort_values("평균등락률", ascending=False).head(10).reset_index(drop=True)
-    bottom = grp.sort_values("평균등락률", ascending=True).head(10).reset_index(drop=True)
+    top = grp.sort_values("평균등락률", ascending=False).head(n).reset_index(drop=True)
+    bottom = grp.sort_values("평균등락률", ascending=True).head(n).reset_index(drop=True)
     return top, bottom
+
+
+def theme_analysis(df, theme_map):
+    """테마(수기·중첩)별 평균 등락률을 계산해 (상위10, 하위10) 반환."""
+    return _group_analysis(df, theme_map, "테마", config.MIN_THEME_STOCKS)
+
+
+def sector_analysis(df, sector_map):
+    """섹터(업종·전수·1:1)별 평균 등락률을 계산해 (상위10, 하위10) 반환."""
+    return _group_analysis(df, sector_map, "섹터", config.MIN_SECTOR_STOCKS)
+
+
+def sector_tier_table(df, sector_map):
+    """섹터를 '시장 대비 초과수익(%p)' 기준 S~G 티어로 분류한다.
+
+    초과수익 = 섹터 평균 등락률 − 시장 평균(섹터 편입 종목 전체 평균).
+    반환: (티어이름 → DataFrame[섹터, 평균등락률, 초과, 종목수]), 시장평균(float)
+    """
+    sm = sector_map[["종목코드", "섹터"]]
+    merged = df.merge(sm, on="종목코드", how="inner")
+    market_avg = round(float(merged["등락률"].mean()), 2) if len(merged) else 0.0
+
+    grp = (
+        merged.groupby("섹터")
+        .agg(평균등락률=("등락률", "mean"), 종목수=("등락률", "size"))
+        .reset_index()
+    )
+    grp = grp[grp["종목수"] >= config.MIN_SECTOR_STOCKS].copy()
+    grp["평균등락률"] = grp["평균등락률"].round(2)
+    grp["초과"] = (grp["평균등락률"] - market_avg).round(2)
+    grp["티어"] = grp["초과"].apply(lambda v: _tier_of_value(v, config.SECTOR_TIERS))
+
+    result = {}
+    for name, _lo, _hi in config.SECTOR_TIERS:
+        sub = grp[grp["티어"] == name]
+        ascending = name in config.DOWN_TIERS   # 하락 티어는 초과수익 낮은(언더퍼폼 큰) 순
+        result[name] = sub.sort_values("초과", ascending=ascending).reset_index(drop=True)
+    return result, market_avg
+
+
+def big_theme_heatmap(df, big_theme_map):
+    """대테마(17개)별 집계를 히트맵용으로 전부 반환 (강한→약한 정렬).
+
+    반환 컬럼: [대테마, 평균등락률, 종목수, 상승, 하락]
+    """
+    bm = big_theme_map[["종목코드", "대테마"]]
+    merged = df.merge(bm, on="종목코드", how="inner")
+    grp = (
+        merged.groupby("대테마")
+        .agg(
+            평균등락률=("등락률", "mean"),
+            종목수=("등락률", "size"),
+            상승=("등락률", lambda s: int((s > 0).sum())),
+            하락=("등락률", lambda s: int((s < 0).sum())),
+        )
+        .reset_index()
+    )
+    grp["평균등락률"] = grp["평균등락률"].round(2)
+    return grp.sort_values("평균등락률", ascending=False).reset_index(drop=True)

@@ -54,15 +54,38 @@ def load_theme_map(date_str: str, collector_module, source_name: str):
     return theme_map.drop_duplicates(subset=["종목코드", "테마"]).reset_index(drop=True)
 
 
-def complete_theme_map(df, theme_map):
-    covered = set(theme_map["종목코드"])
-    missing = df[~df["종목코드"].isin(covered)]
-    if missing.empty:
-        return theme_map
+def load_sector_map(date_str, collector_module, refresh=False):
+    """섹터(업종) 매핑을 불러온다. 기본은 캐시(sector_map.csv) 사용,
+    refresh=True 이거나 캐시가 없으면 네이버 업종을 재수집해 캐시를 갱신한다."""
+    path = config.SECTOR_MAP_FILE
 
-    fallback = missing[["종목코드", "종목명"]].copy()
-    fallback["테마"] = "미분류"
-    return pd.concat([theme_map, fallback], ignore_index=True)
+    if refresh or not os.path.exists(path):
+        try:
+            sector_map = collector_module.collect_sector_map(date_str)
+        except Exception as exc:
+            print(f"  · [안내] 섹터 수집 실패: {exc}")
+            sector_map = pd.DataFrame(columns=["종목코드", "종목명", "섹터"])
+        if not sector_map.empty:
+            sector_map.to_csv(path, index=False, encoding="utf-8-sig")
+            print(f"  · 섹터 재수집·캐시 저장: {path}")
+    else:
+        sector_map = pd.read_csv(path, dtype={"종목코드": str})
+
+    if sector_map.empty:
+        return sector_map
+    sector_map["종목코드"] = sector_map["종목코드"].astype(str).str.zfill(6)
+    sector_map["섹터"] = sector_map["섹터"].astype(str).str.strip()
+    return sector_map[sector_map["섹터"] != ""].reset_index(drop=True)
+
+
+def load_big_theme_map():
+    """대테마(17 대분류) 매핑을 불러온다. 없으면 빈 DataFrame."""
+    path = config.BIG_THEME_MAP_FILE
+    if not os.path.exists(path):
+        return pd.DataFrame(columns=["종목코드", "종목명", "대테마"])
+    big = pd.read_csv(path, dtype={"종목코드": str})
+    big["종목코드"] = big["종목코드"].astype(str).str.zfill(6)
+    return big
 
 
 def attach_market_indices(by_market, collector_module, date_str: str, historical: bool):
@@ -123,6 +146,8 @@ def main(argv=None):
                     help="HTML 리포트 디자인 모드 (기본: mode1)")
     ap.add_argument("--force", action="store_true",
                     help="기존 날짜 CSV/리포트를 현재 스냅샷으로 갱신")
+    ap.add_argument("--refresh-sector", action="store_true",
+                    help="섹터(업종) 매핑을 네이버에서 재수집해 sector_map.csv 갱신")
     args = ap.parse_args(argv)
 
     started = time.time()
@@ -164,9 +189,16 @@ def main(argv=None):
     top_value = analyzer.top_trading_value(df, n=30)
     top_value_common = analyzer.top_trading_value(df, n=30, common_only=True)
     theme_map = load_theme_map(date_str, data_collector, "naver")
-    theme_map = complete_theme_map(df, theme_map)
-    print(f"  · 테마 매핑 수: {len(theme_map):,}")
-    top, bottom = analyzer.theme_analysis(df, theme_map)
+    print(f"  · 테마 매핑 수: {len(theme_map):,}  (수기 큐레이션, 미분류 제외)")
+
+    sector_map = load_sector_map(date_str, data_collector, refresh=args.refresh_sector)
+    print(f"  · 섹터 매핑 수: {len(sector_map):,}")
+    sector_tiers, sector_market_avg = analyzer.sector_tier_table(df, sector_map)
+
+    big_theme_map = load_big_theme_map()
+    big_theme = analyzer.big_theme_heatmap(df, big_theme_map) if len(big_theme_map) else None
+    if big_theme is not None:
+        print(f"  · 대테마: {len(big_theme)}개 / 매핑 종목 {len(big_theme_map):,}")
 
     # 3) 출력
     report.write_theme_map(theme_map, theme_map_path)
@@ -180,8 +212,9 @@ def main(argv=None):
         by_market=by_market,
         tiers=tiers,
         tiers_common=tiers_common,
-        top=top,
-        bottom=bottom,
+        sector_tiers=sector_tiers,
+        sector_market_avg=sector_market_avg,
+        big_theme=big_theme,
         top_value=top_value,
         top_value_common=top_value_common,
     )

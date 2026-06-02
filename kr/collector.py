@@ -21,6 +21,7 @@ import requests
 
 COLUMNS = ["종목코드", "종목명", "시장", "현재가", "등락률", "거래량", "거래대금"]
 THEME_COLUMNS = ["종목코드", "종목명", "테마"]
+SECTOR_COLUMNS = ["종목코드", "종목명", "섹터"]
 
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -31,7 +32,13 @@ FLOW_MARKETS = {"KOSPI": "01", "KOSDAQ": "02"}
 MARKET_SUM_URL = "https://finance.naver.com/sise/sise_market_sum.naver"
 INVESTOR_FLOW_URL = "https://finance.naver.com/sise/investorDealTrendDay.naver"
 DAILY_URL = "https://api.finance.naver.com/siseJson.naver"
+SECTOR_LIST_URL = "https://finance.naver.com/sise/sise_group.naver"
+SECTOR_DETAIL_URL = "https://finance.naver.com/sise/sise_group_detail.naver"
 HISTORY_WORKERS = 8
+SECTOR_WORKERS = 8
+
+_SECTOR_LIST_RE = re.compile(r'sise_group_detail\.naver\?type=upjong&no=(\d+)">([^<]+)</a>')
+_SECTOR_ITEM_RE = re.compile(r'/item/main\.naver\?code=(\d{6})">([^<]+)</a>')
 
 
 def collect(date_str: str, historical: bool = False) -> pd.DataFrame:
@@ -43,8 +50,69 @@ def collect(date_str: str, historical: bool = False) -> pd.DataFrame:
 
 
 def collect_theme_map(date_str: str) -> pd.DataFrame:
-    """네이버 수집기는 업종/테마 일괄 데이터를 제공하지 않는다."""
+    """네이버 수집기는 트렌드성 '테마' 일괄 데이터를 제공하지 않는다.
+
+    테마는 수기(theme_map.csv)로 관리한다. 섹터(업종)는 collect_sector_map 참고.
+    """
     return pd.DataFrame(columns=THEME_COLUMNS)
+
+
+def collect_sector_map(date_str: str | None = None) -> pd.DataFrame:
+    """네이버 업종 분류를 수집해 종목 1:1 섹터 매핑을 만든다.
+
+    종목코드, 종목명, 섹터 3컬럼. 한 종목은 정확히 하나의 섹터에 속한다.
+    섹터는 거의 바뀌지 않으므로 보통 캐시(sector_map.csv)로 쓰고 가끔만 재수집한다.
+    date_str 은 API 대칭을 위한 인자로 결과에는 영향을 주지 않는다.
+    """
+    sectors = _read_sector_list()
+    rows = []
+    with ThreadPoolExecutor(max_workers=SECTOR_WORKERS) as executor:
+        futures = {executor.submit(_read_sector_detail, no): name for no, name in sectors}
+        for future in as_completed(futures):
+            name = futures[future]
+            try:
+                items = future.result()
+            except Exception:
+                continue
+            for code, stock_name in items:
+                rows.append((code, stock_name, name))
+
+    if not rows:
+        return pd.DataFrame(columns=SECTOR_COLUMNS)
+
+    out = pd.DataFrame(rows, columns=SECTOR_COLUMNS)
+    out["종목코드"] = out["종목코드"].astype(str).str.zfill(6)
+    out["종목명"] = out["종목명"].astype(str).str.strip()
+    out["섹터"] = out["섹터"].astype(str).str.strip()
+    out = out.drop_duplicates(subset=["종목코드"]).reset_index(drop=True)
+    return out.sort_values(["섹터", "종목명"]).reset_index(drop=True)
+
+
+def _read_sector_list() -> list[tuple[str, str]]:
+    response = requests.get(
+        SECTOR_LIST_URL,
+        params={"type": "upjong"},
+        headers={"User-Agent": USER_AGENT},
+        timeout=20,
+    )
+    response.raise_for_status()
+    response.encoding = "euc-kr"
+    pairs = _SECTOR_LIST_RE.findall(response.text)
+    if not pairs:
+        raise RuntimeError("네이버 업종 목록을 찾지 못했습니다")
+    return [(no, name.strip()) for no, name in pairs]
+
+
+def _read_sector_detail(no: str) -> list[tuple[str, str]]:
+    response = requests.get(
+        SECTOR_DETAIL_URL,
+        params={"type": "upjong", "no": no},
+        headers={"User-Agent": USER_AGENT},
+        timeout=20,
+    )
+    response.raise_for_status()
+    response.encoding = "euc-kr"
+    return [(code, name.strip()) for code, name in _SECTOR_ITEM_RE.findall(response.text)]
 
 
 def collect_market_indices(date_str: str, historical: bool = False) -> dict:
