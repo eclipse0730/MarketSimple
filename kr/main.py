@@ -155,6 +155,25 @@ def load_prev_market_frames(data_dir: str, date_str: str, days: int):
     return frames
 
 
+def is_holiday_duplicate(df, data_dir: str, date_str: str) -> bool:
+    """수집 데이터가 직전 거래일과 사실상 동일하면 휴장/장전으로 판단.
+
+    네이버 스냅샷은 휴장일·장 시작 전에 전일 종가를 그대로 주므로, 현재가가
+    직전 거래일과 (공통 종목 기준) 100% 일치하면 새 거래 데이터가 아니다.
+    """
+    prev = load_prev_market_frames(data_dir, date_str, 1)
+    if not prev:
+        return False
+    p = prev[0]
+    cur = df.copy()
+    cur["종목코드"] = cur["종목코드"].astype(str).str.zfill(6)
+    merged = cur.merge(p[["종목코드", "현재가"]], on="종목코드", suffixes=("", "_prev"))
+    if len(merged) < 100:          # 비교 표본이 너무 적으면 판단 보류
+        return False
+    same_ratio = (merged["현재가"] == merged["현재가_prev"]).mean()
+    return same_ratio >= 0.999     # 사실상 전부 동일 = 휴장/장전 복제
+
+
 def available_report_dates(data_dir: str) -> list[str]:
     """리포트를 만들 수 있는(=CSV가 있는) 날짜 목록을 오름차순으로 반환."""
     dates = []
@@ -243,6 +262,13 @@ def main(argv=None):
             print("  · --force 지정: 기존 CSV를 무시하고 재수집")
         df = data_collector.collect(date_str, historical=bool(args.date))
         print(f"  · 수집 종목 수: {len(df):,}")
+
+        # 휴장/장전 복제 방지: 스냅샷이 직전 거래일과 동일하면 리포트를 만들지 않는다.
+        # (과거 --date 빌드는 의도된 것이라 검사하지 않는다)
+        if not args.date and is_holiday_duplicate(df, data_dir, date_str):
+            print(f"  · 직전 거래일과 데이터 동일 — 휴장/장전으로 판단, 생성 중단")
+            return
+
         report.write_csv(df, csv_path)
 
     if args.collector:
