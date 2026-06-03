@@ -465,6 +465,74 @@ def _date_label(date_str):
     return f"{date_str[:4]}.{date_str[4:6]}.{date_str[6:]}"
 
 
+def _ga_html():
+    """Google Analytics 4 스크립트. 측정 ID 없으면 빈 문자열."""
+    gid = config.GA_MEASUREMENT_ID
+    if not gid:
+        return ""
+    return (
+        f'<script async src="https://www.googletagmanager.com/gtag/js?id={gid}"></script>'
+        "<script>window.dataLayer=window.dataLayer||[];"
+        "function gtag(){{dataLayer.push(arguments);}}"
+        "gtag('js',new Date());"
+        f"gtag('config','{gid}');</script>"
+    ).replace("{{", "{").replace("}}", "}")
+
+
+def _feedback_html():
+    """우하단 피드백 버튼 + 팝업 폼. Web3Forms 키 없으면 빈 문자열.
+
+    제출은 Web3Forms 로 비동기 전송(페이지 이탈 없음). x 로 닫기.
+    """
+    key = config.WEB3FORMS_KEY
+    if not key:
+        return ""
+    return f"""
+  <button class="fb-fab" id="fbOpen" aria-label="피드백 보내기" title="요청·피드백 보내기">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H7l-3 3z"/></svg>
+  </button>
+  <div class="fb-pop" id="fbPop" role="dialog" aria-label="피드백" hidden>
+    <div class="fb-card">
+      <button class="fb-x" id="fbClose" aria-label="닫기">&times;</button>
+      <h3>요청·피드백</h3>
+      <p class="fb-sub">개선 아이디어나 원하는 기능을 자유롭게 남겨주세요 🙌</p>
+      <form id="fbForm">
+        <input type="hidden" name="access_key" value="{key}">
+        <input type="hidden" name="subject" value="[MarketBrief] 피드백">
+        <input type="hidden" name="from_name" value="MarketBrief 방문자">
+        <textarea name="message" rows="4" required placeholder="여기에 내용을 적어주세요"></textarea>
+        <input type="email" name="email" placeholder="회신받을 이메일 (선택)">
+        <button type="submit" class="fb-send">보내기</button>
+        <p class="fb-msg" id="fbMsg" hidden></p>
+      </form>
+    </div>
+  </div>
+  <script>
+  (function(){{
+    var open=document.getElementById('fbOpen'),pop=document.getElementById('fbPop'),
+        close=document.getElementById('fbClose'),form=document.getElementById('fbForm'),
+        msg=document.getElementById('fbMsg');
+    function show(v){{pop.hidden=!v;}}
+    open.addEventListener('click',function(){{show(true);}});
+    close.addEventListener('click',function(){{show(false);}});
+    pop.addEventListener('click',function(e){{if(e.target===pop)show(false);}});
+    form.addEventListener('submit',function(e){{
+      e.preventDefault();
+      var data=new FormData(form);
+      msg.hidden=false;msg.textContent='보내는 중…';
+      fetch('https://api.web3forms.com/submit',{{method:'POST',body:data}})
+        .then(function(r){{return r.json();}})
+        .then(function(d){{
+          if(d.success){{msg.textContent='보내주셔서 감사합니다! 🙏';form.reset();
+            setTimeout(function(){{show(false);msg.hidden=true;}},1500);}}
+          else{{msg.textContent='전송 실패 — 잠시 후 다시 시도해주세요.';}}
+        }})
+        .catch(function(){{msg.textContent='전송 실패 — 네트워크를 확인해주세요.';}});
+    }});
+  }})();
+  </script>"""
+
+
 def _og_tags_html(date_str, overall):
     """카톡/SNS 공유용 Open Graph 메타태그.
 
@@ -537,6 +605,8 @@ def write_html(path, *, date_str, session, generated_at, overall, by_market, tie
     html = _PAGE.format(
         date=_date_label(date_str),
         og_tags=_og_tags_html(date_str, overall),
+        ga=_ga_html(),
+        feedback=_feedback_html(),
         date_nav=_date_nav_html(date_str, date_nav),
         session_label=SESSION_LABEL.get(session, session),
         generated_at=generated_at,
@@ -556,6 +626,7 @@ _PAGE = """<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Market Brief — {date} {session_label}</title>
 {og_tags}
+{ga}
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=Quicksand:wght@400;500;600;700&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
@@ -858,6 +929,39 @@ _PAGE = """<!doctype html>
   footer {{ margin-top:32px; padding-top:20px; text-align:center; font-family:var(--round);
             font-size:11.5px; color:var(--faint); letter-spacing:.02em; font-weight:600; }}
 
+  /* 피드백 위젯 (우하단 FAB + 팝업) */
+  .fb-fab {{ position:fixed; right:18px; bottom:18px; z-index:50;
+             width:52px; height:52px; border-radius:50%; border:none; cursor:pointer;
+             background:linear-gradient(135deg,var(--accent),var(--up)); color:#fff;
+             box-shadow:0 6px 18px rgba(216,138,168,.45);
+             display:flex; align-items:center; justify-content:center;
+             transition:transform .14s ease, box-shadow .14s ease; }}
+  .fb-fab:hover {{ transform:translateY(-2px) scale(1.04); }}
+  .fb-fab svg {{ width:24px; height:24px; fill:none; stroke:currentColor; stroke-width:2;
+                 stroke-linecap:round; stroke-linejoin:round; }}
+  .fb-pop {{ position:fixed; inset:0; z-index:60; display:flex; align-items:flex-end;
+             justify-content:flex-end; padding:18px;
+             background:rgba(30,20,28,.28); backdrop-filter:blur(2px); }}
+  .fb-pop[hidden] {{ display:none; }}
+  .fb-card {{ position:relative; width:min(340px,92vw); background:var(--panel);
+              border:1px solid var(--line); border-radius:20px; padding:22px 20px 18px;
+              box-shadow:0 16px 48px rgba(0,0,0,.22); margin:0 0 70px 0;
+              animation:fbrise .22s cubic-bezier(.16,1,.3,1); }}
+  @keyframes fbrise {{ from{{opacity:0;transform:translateY(12px);}} to{{opacity:1;transform:none;}} }}
+  .fb-card h3 {{ margin:0 0 4px; font-family:var(--serif); font-size:18px; color:var(--heading); }}
+  .fb-sub {{ margin:0 0 12px; font-size:12px; color:var(--sub); }}
+  .fb-x {{ position:absolute; top:10px; right:12px; border:none; background:none; cursor:pointer;
+           font-size:22px; line-height:1; color:var(--faint); }}
+  .fb-card textarea, .fb-card input[type=email] {{ width:100%; box-sizing:border-box;
+           border:1px solid var(--line); border-radius:12px; padding:10px 12px; margin-bottom:9px;
+           font-family:var(--sans); font-size:13px; background:var(--panel2); color:var(--ink);
+           resize:vertical; }}
+  .fb-card textarea:focus, .fb-card input:focus {{ outline:none; border-color:var(--accent); }}
+  .fb-send {{ width:100%; border:none; cursor:pointer; border-radius:12px; padding:11px;
+              font-family:var(--round); font-size:13px; font-weight:800; color:#fff;
+              background:linear-gradient(135deg,var(--accent),var(--up)); }}
+  .fb-msg {{ margin:10px 0 0; font-size:12px; font-weight:700; color:var(--sub); text-align:center; }}
+
   @keyframes pulse {{ 0%,100%{{opacity:1;}} 50%{{opacity:.4;}} }}
   .reveal {{ opacity:0; transform:translateY(16px); animation:rise .8s cubic-bezier(.16,1,.3,1) forwards; }}
   .reveal:nth-child(1){{animation-delay:.05s;}} .reveal:nth-child(2){{animation-delay:.14s;}}
@@ -1004,5 +1108,6 @@ _PAGE = """<!doctype html>
   {body}
   <footer>Market Brief V1 — 시장 분위기 파악용 경량 리포트 · 투자 판단의 근거가 아닙니다.</footer>
 </div>
+{feedback}
 </body>
 </html>"""

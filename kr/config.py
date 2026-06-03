@@ -19,6 +19,16 @@ STOCK_URL_TEMPLATE = "https://finance.naver.com/item/main.naver?code={code6}"
 # 환경변수 SITE_BASE_URL 로도 덮어쓸 수 있다. 비우면 OG의 url/image는 생략.
 SITE_BASE_URL = os.environ.get("SITE_BASE_URL", "").rstrip("/")
 
+# ──────────────────────────────────────────────
+# 외부 연동 (배포 페이지 기능). 모두 환경변수로 주입하며, 비어있으면 자동 비활성.
+# ──────────────────────────────────────────────
+# Google Analytics 4 측정 ID (G-XXXXXXXXXX). 있으면 페이지에 GA4 스크립트 삽입.
+GA_MEASUREMENT_ID = os.environ.get("GA_MEASUREMENT_ID", "").strip()
+# Web3Forms Access Key (UUID). 있으면 피드백 팝업 폼 노출.
+WEB3FORMS_KEY = os.environ.get("WEB3FORMS_KEY", "").strip()
+# 피드백 알림을 받을 이메일 (폼 제출 시 이 주소로 전송).
+FEEDBACK_EMAIL = os.environ.get("FEEDBACK_EMAIL", "ruin2055@gmail.com").strip()
+
 
 def report_filename(date_str: str, mode: str) -> str:
     """리포트 HTML 파일명 규칙(단일 출처). 날짜 네비게이션 링크도 이걸 쓴다."""
