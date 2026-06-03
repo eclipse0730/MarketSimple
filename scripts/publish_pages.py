@@ -18,7 +18,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from urllib.parse import unquote
+from urllib.parse import unquote, urlparse
 
 ROOT = Path(__file__).resolve().parents[1]
 DOCS = ROOT / "docs"
@@ -179,9 +179,33 @@ def _empty_page(title: str) -> str:
 """
 
 
+def _custom_domain() -> str:
+    """커스텀 도메인 결정. CUSTOM_DOMAIN 환경변수 우선, 없으면 SITE_BASE_URL 호스트.
+
+    단, *.github.io 는 커스텀 도메인이 아니므로 CNAME 을 만들지 않는다.
+    """
+    domain = os.environ.get("CUSTOM_DOMAIN", "").strip()
+    if not domain:
+        from kr import config
+        host = urlparse(config.SITE_BASE_URL).netloc
+        domain = host
+    if not domain or domain.endswith(".github.io"):
+        return ""
+    return domain
+
+
 def main() -> None:
     DOCS.mkdir(parents=True, exist_ok=True)
     _write_text(DOCS / ".nojekyll", "")
+
+    # GitHub Pages 커스텀 도메인 (publish 마다 보존). 없으면 CNAME 제거.
+    domain = _custom_domain()
+    cname_file = DOCS / "CNAME"
+    if domain:
+        _write_text(cname_file, domain + "\n")
+        print(f"  · CNAME: {domain}")
+    elif cname_file.exists():
+        cname_file.unlink()
 
     kr_ready = publish_market("kr", "KR Market Brief")
     us_ready = publish_market("us", "US Market Brief")
