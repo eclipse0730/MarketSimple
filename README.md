@@ -110,11 +110,14 @@ GitHub 저장소 설정:
 * Branch: `main`
 * Folder: `/docs`
 
-게시 후 주소는 보통 아래 형식입니다.
+게시 후 주소:
 
 ```text
-https://eclipse0730.github.io/MarketSimple/
+https://marketbrief.kr/            (커스텀 도메인, 가비아)
+https://eclipse0730.github.io/MarketSimple/   (GitHub Pages 기본 주소)
 ```
+
+배포 구조·URL 동작 원리·도메인 연결·카톡 공유는 [DEPLOY.md](DEPLOY.md)에 정리되어 있습니다.
 
 ## 참고 / 주의
 
