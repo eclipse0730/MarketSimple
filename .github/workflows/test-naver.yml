@@ -1,0 +1,56 @@
+name: test-naver-access
+
+# GitHub Actions(클라우드 IP)에서 네이버 금융 수집이 되는지 검증용.
+# Actions 탭 → "test-naver-access" → Run workflow 로 수동 실행.
+on:
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install deps
+        run: pip install pandas requests lxml
+
+      - name: Probe Naver (snapshot + daily API)
+        run: |
+          python - <<'PY'
+          import requests, pandas as pd
+          from io import StringIO
+          UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
+
+          print("=== 1) 시총 페이지(스냅샷 수집 경로) ===")
+          try:
+              r = requests.get("https://finance.naver.com/sise/sise_market_sum.naver",
+                               params={"sosok": 0, "page": 1},
+                               headers={"User-Agent": UA}, timeout=20)
+              r.encoding = "euc-kr"
+              print("status:", r.status_code, "len:", len(r.text))
+              tables = pd.read_html(StringIO(r.text))
+              t = next((x for x in tables if "종목명" in x.columns and "현재가" in x.columns), None)
+              rows = 0 if t is None else len(t.dropna(subset=["종목명"]))
+              print("종목 테이블:", "찾음" if t is not None else "없음", "| 종목수:", rows)
+          except Exception as e:
+              print("ERROR:", repr(e)[:200])
+
+          print("\n=== 2) 일봉 API(과거 수집 경로) ===")
+          try:
+              r = requests.get("https://api.finance.naver.com/siseJson.naver",
+                               params={"symbol": "005930", "requestType": 1,
+                                       "startTime": "20260520", "endTime": "20260603",
+                                       "timeframe": "day"},
+                               headers={"User-Agent": UA,
+                                        "Referer": "https://finance.naver.com/item/main.naver?code=005930"},
+                               timeout=15)
+              print("status:", r.status_code, "len:", len(r.text))
+              print("head:", r.text[:120].replace(chr(10), " "))
+          except Exception as e:
+              print("ERROR:", repr(e)[:200])
+          PY
