@@ -533,6 +533,14 @@ _MASCOT_RUNTIME = """
         localStorage.setItem(o.posKey, JSON.stringify({x:r.left,y:r.top})); }catch(_){} }
     });
 
+    // 숨김(×) 버튼 — 캐릭터를 이 세션 동안만 숨김(새로고침하면 복원)
+    if(o.hideBtn){
+      var hb=document.getElementById(o.hideBtn);
+      if(hb) hb.addEventListener('click', function(e){
+        e.stopPropagation(); wrap.style.display='none';
+      });
+    }
+
     return {showBubble:showBubble, isOpen:bubbleOpen};
   };
   </script>"""
@@ -576,6 +584,7 @@ def _feedback_html():
     <button class="mascot-btn" id="fbBtn" aria-label="피드백 보내기" title="요청·피드백 보내기">
       {figure}
     </button>
+    <button class="mascot-hide" id="fbHide" aria-label="마스코트 숨기기" title="숨기기">&times;</button>
   </div>
   <script>
   (function(){{
@@ -591,6 +600,7 @@ def _feedback_html():
     // 공통 런타임 + 클릭 시 인사↔피드백폼 전환 (말풍선은 계속 열린 채)
     var api=window.__mbMascot({{
       wrap:'fbWrap', btn:'fbBtn', bubble:'fbBubble', posKey:'mb_fb_pos',
+      hideBtn:'fbHide',
       onToggle:function(ctx){{
         if(!ctx.isOpen){{ setMode('greet'); ctx.showBubble(true); }}
         else {{ setMode(form.hidden?'form':'greet'); }}
@@ -674,6 +684,7 @@ def _mascot_html():
     <button class="mascot-btn" id="mascotBtn" aria-label="공지 보기" title="공지 보기">
       {figure}
     </button>
+    <button class="mascot-hide" id="mascotHide" aria-label="마스코트 숨기기" title="숨기기">&times;</button>
   </div>
   <script>
   (function(){{
@@ -692,6 +703,7 @@ def _mascot_html():
     // 공통 런타임(드래그·눌림·위치기억) + 클릭 시 공지 토글/문구 순환
     var api=window.__mbMascot({{
       wrap:'mascotWrap', btn:'mascotBtn', bubble:'mascotBubble', posKey:'mb_mascot_pos',
+      hideBtn:'mascotHide',
       onToggle:function(ctx){{
         if(!ctx.isOpen){{ if(msgs&&msgs.length){{renderCurrent();}} ctx.showBubble(true); }}
         else if(msgs&&msgs.length>1){{ idx++; renderCurrent(); }}
@@ -1151,6 +1163,16 @@ _PAGE = """<!doctype html>
   .mascot-btn:hover {{ transform:scale(1.06) rotate(-3deg); }}
   .mascot-btn.is-active {{ transform:scale(1.03); }}
   .mascot-btn svg {{ width:100%; height:auto; display:block; }}
+  /* 캐릭터 숨김(×) 버튼 — 말풍선이 펼쳐지는 반대쪽 상단에 둬서 안 가리게.
+     곰(좌하단,말풍선 오른쪽): 좌상단 / 펭귄(우하단,말풍선 왼쪽): 우상단 */
+  .mascot-hide {{ position:absolute; top:-2px; left:-2px; right:auto; z-index:55;
+                  width:24px; height:24px; border-radius:50%; cursor:pointer;
+                  border:1px solid var(--line); background:var(--panel); color:var(--sub);
+                  font-size:15px; line-height:1; display:flex; align-items:center;
+                  justify-content:center; padding:0; box-shadow:0 2px 6px rgba(0,0,0,.12);
+                  opacity:.6; transition:opacity .15s ease, transform .15s ease; }}
+  .mascot-right .mascot-hide {{ left:auto; right:-2px; }}
+  .mascot-hide:hover {{ opacity:1; transform:scale(1.1); }}
   @keyframes mascotBob {{ 0%,100%{{transform:translateY(0);}} 50%{{transform:translateY(-5px);}} }}
   /* 말풍선: 마스코트 버튼 위에 절대 배치 → 버튼은 제자리 고정, 말풍선만 위로 뜸.
      wrap 이 버튼폭(좁음)이라 shrink-to-fit 으로 눌리지 않게 width 를 명시한다. */
