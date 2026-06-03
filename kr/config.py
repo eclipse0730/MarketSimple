@@ -7,6 +7,34 @@
 import os
 
 BASE_DIR = os.path.dirname(__file__)
+
+
+def _load_dotenv():
+    """프로젝트 루트의 .env 를 환경변수로 로드(외부 의존성 없이 경량 파싱).
+
+    이미 환경에 있는 값은 덮어쓰지 않는다(터미널 export 가 우선).
+    KEY=VALUE 형식, # 주석·빈 줄 무시.
+    """
+    root = os.path.dirname(BASE_DIR)
+    for path in (os.path.join(root, ".env"), os.path.join(BASE_DIR, ".env")):
+        if not os.path.exists(path):
+            continue
+        try:
+            with open(path, encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith("#") or "=" not in line:
+                        continue
+                    key, val = line.split("=", 1)
+                    key = key.strip()
+                    val = val.strip().strip('"').strip("'")
+                    os.environ.setdefault(key, val)
+        except OSError:
+            pass
+
+
+_load_dotenv()
+
 MARKET_KEY = "kr"
 MARKET_NAME = "한국 증시"
 MARKET_SUBTITLE = "KOSPI · KOSDAQ"
