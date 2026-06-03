@@ -57,6 +57,16 @@ WEB3FORMS_KEY = os.environ.get("WEB3FORMS_KEY", "").strip()
 # 피드백 알림을 받을 이메일 (폼 제출 시 이 주소로 전송).
 FEEDBACK_EMAIL = os.environ.get("FEEDBACK_EMAIL", "ruin2055@gmail.com").strip()
 
+# 마스코트 + 공지 위젯. 공지 내용은 배포 사이트의 notice.json 에서 읽으므로
+# 재빌드 없이 메시지 갱신 가능. "0"/"false"/"off" 면 마스코트 자체를 끈다.
+MASCOT_ENABLED = os.environ.get("MASCOT_ENABLED", "1").strip().lower() not in ("0", "false", "off", "")
+# notice.json 경로 (사이트 루트 기준 절대경로). 날짜 폴더 깊이와 무관하게 항상 루트에서 읽는다.
+NOTICE_JSON_PATH = os.environ.get("NOTICE_JSON_PATH", "/notice.json").strip()
+# 마스코트 이미지 경로 (사이트 루트 기준). 비우면 내장 SVG 곰 사용.
+MASCOT_IMAGE = os.environ.get("MASCOT_IMAGE", "/images/bear_clear.png").strip()
+# 피드백 마스코트(펭귄) 이미지 경로. 비우면 내장 말풍선 아이콘 사용.
+FEEDBACK_IMAGE = os.environ.get("FEEDBACK_IMAGE", "/images/pengu2_clear.png").strip()
+
 
 def report_filename(date_str: str, mode: str) -> str:
     """리포트 HTML 파일명 규칙(단일 출처). 날짜 네비게이션 링크도 이걸 쓴다."""

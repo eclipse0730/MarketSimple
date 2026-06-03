@@ -207,6 +207,18 @@ def main() -> None:
     elif cname_file.exists():
         cname_file.unlink()
 
+    # 마스코트 공지 데이터: 루트 notice.json → docs/notice.json (재빌드 없이 갱신용)
+    notice_src = ROOT / "notice.json"
+    if notice_src.exists():
+        shutil.copy2(notice_src, DOCS / "notice.json")
+        print("  · notice.json 복사")
+
+    # 정적 이미지(마스코트 등): images/ → docs/images/
+    images_src = ROOT / "images"
+    if images_src.is_dir():
+        shutil.copytree(images_src, DOCS / "images", dirs_exist_ok=True)
+        print("  · images/ 복사")
+
     kr_ready = publish_market("kr", "KR Market Brief")
     us_ready = publish_market("us", "US Market Brief")
     # 루트 진입 시 KR 최신 리포트로 바로 이동 (KR이 메인). KR이 없으면 선택 메뉴 폴백.
