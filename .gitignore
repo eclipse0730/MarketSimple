@@ -2,7 +2,14 @@
 __pycache__/
 *.py[cod]
 .env
-output/
+# output/ 는 무시하되, 거래량 급증 평균에 필요한 일별 시세 CSV만 git 에 포함한다
+# (GitHub Actions 러너가 과거 데이터로 사용)
+output/*
+!output/kr
+output/kr/*
+!output/kr/data
+output/kr/data/*
+!output/kr/data/market_*.csv
 _localtest/
 .claude/
 memo.txt

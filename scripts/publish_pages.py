@@ -117,17 +117,22 @@ def _make_thumbnail(chrome: str, html_path: Path, out_png: Path) -> bool:
                 pass
 
 
-def publish_market(market: str, title: str) -> bool:
-    dates = _report_dates(market)
+def publish_market(market: str, title: str, only_latest: bool = False,
+                   skip_thumb: bool = False) -> bool:
+    all_dates = _report_dates(market)
     out_root = DOCS / market
     out_root.mkdir(parents=True, exist_ok=True)
 
-    if not dates:
+    if not all_dates:
         _write_text(out_root / "index.html", _empty_page(title))
         return False
 
-    chrome = _find_chrome()
-    if chrome is None:
+    latest = all_dates[-1]
+    # 장중 모드: 최신 날짜 페이지만 갱신(과거 페이지·썸네일은 건드리지 않음)
+    dates = [latest] if only_latest else all_dates
+
+    chrome = None if skip_thumb else _find_chrome()
+    if chrome is None and not skip_thumb:
         print("  · [안내] Chrome 미발견 — 썸네일 생략 (CHROME_PATH 로 지정 가능)")
 
     report_dir = ROOT / "output" / market / "report"
@@ -139,10 +144,10 @@ def publish_market(market: str, title: str) -> bool:
         day_dir.mkdir(parents=True, exist_ok=True)
         html = _rewrite_nav_links(src.read_text(encoding="utf-8"))
         _write_text(day_dir / "index.html", html)
-        if chrome:
+        # 썸네일은 새로 생기는 날짜에만(이미 있으면 유지). 장중엔 skip_thumb 로 생략.
+        if chrome and not (day_dir / "thumb.png").exists():
             _make_thumbnail(chrome, src, day_dir / "thumb.png")
 
-    latest = dates[-1]
     # 최신으로 리다이렉트 (카톡 공유는 항상 /<market>/ 한 줄만)
     _write_text(out_root / "index.html", _redirect_page(title, f"{latest}/"))
     print(f"  · {market}: {len(dates)}일 게시 (최신 {latest})")
@@ -194,7 +199,15 @@ def _custom_domain() -> str:
     return domain
 
 
-def main() -> None:
+def main(argv=None) -> None:
+    import argparse
+    ap = argparse.ArgumentParser(description="GitHub Pages 발행")
+    ap.add_argument("--intraday", action="store_true",
+                    help="장중 모드: 최신 날짜만 갱신 + 썸네일 생략(저장소 폭증 방지)")
+    args = ap.parse_args(argv)
+    only_latest = args.intraday
+    skip_thumb = args.intraday
+
     DOCS.mkdir(parents=True, exist_ok=True)
     _write_text(DOCS / ".nojekyll", "")
 
@@ -219,8 +232,8 @@ def main() -> None:
         shutil.copytree(images_src, DOCS / "images", dirs_exist_ok=True)
         print("  · images/ 복사")
 
-    kr_ready = publish_market("kr", "KR Market Brief")
-    us_ready = publish_market("us", "US Market Brief")
+    kr_ready = publish_market("kr", "KR Market Brief", only_latest, skip_thumb)
+    us_ready = publish_market("us", "US Market Brief", only_latest, skip_thumb)
     # 루트 진입 시 KR 최신 리포트로 바로 이동 (KR이 메인). KR이 없으면 선택 메뉴 폴백.
     if kr_ready:
         _write_text(DOCS / "index.html", _redirect_page("Market Brief", "kr/"))
