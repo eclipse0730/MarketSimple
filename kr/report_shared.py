@@ -474,10 +474,10 @@ def _ga_html():
     return (
         f'<script async src="https://www.googletagmanager.com/gtag/js?id={gid}"></script>'
         "<script>window.dataLayer=window.dataLayer||[];"
-        "function gtag(){{dataLayer.push(arguments);}}"
+        "function gtag(){dataLayer.push(arguments);}"
         "gtag('js',new Date());"
         f"gtag('config','{gid}');</script>"
-    ).replace("{{", "{").replace("}}", "}")
+    )
 
 
 # 마스코트(곰·펭귄 등) 부트스트랩. 캐릭터·대사는 characters.json, 동작은 mascots.js
