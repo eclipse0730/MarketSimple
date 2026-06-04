@@ -1,0 +1,36 @@
+{
+  "characters": [
+    {
+      "id": "bear",
+      "type": "notice",
+      "position": "left",
+      "image": "/images/bear_clear.png",
+      "active": true,
+      "autoOpen": true,
+      "ariaButton": "공지 보기",
+      "title": "안녕하세요!",
+      "defaultMessage": "만나서 반가워요. 마켓은 장 중 30분 단위로 업데이트됩니다!",
+      "messages": [
+        "만나서 반가워요. 마켓 정보는 30분마다 업데이트 됩니다!",
+        "오늘은 거래대금부터 살펴볼까요? 📊",
+        "거래량 급증 종목은 과열도 함께 확인해요 🔥",
+        "왼쪽 위 화살표로 다른 날짜도 볼 수 있어요 📅",
+        "의견은 펭구를 통해 보내주세요 💌"
+      ]
+    },
+    {
+      "id": "pengu",
+      "type": "feedback",
+      "position": "right",
+      "image": "/images/pengu2_clear.png",
+      "active": true,
+      "autoOpen": true,
+      "ariaButton": "피드백 보내기",
+      "greetTitle": "반가워요!",
+      "greetMsg": "개선·요청사항이 있으면 저를 눌러주세요!",
+      "formTitle": "개선·요청사항을 자유롭게 남겨주세요!",
+      "subject": "[MarketBrief] 피드백",
+      "fromName": "MarketBrief 방문자"
+    }
+  ]
+}

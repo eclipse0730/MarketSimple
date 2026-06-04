@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """고정된 리포트 구조와 데이터 노출 로직을 담당하는 공유 렌더러."""
 
+import json
 from html import escape
 from urllib.parse import quote
 
@@ -479,254 +480,26 @@ def _ga_html():
     ).replace("{{", "{").replace("}}", "}")
 
 
-# 마스코트 공통 런타임: 드래그 이동 + 눌림 효과 + 위치 기억 + 클릭 토글.
-# window.__mbMascot({wrap,btn,bubble,posKey,onToggle}) 로 곰·펭귄이 공유한다.
-# (일반 문자열 — f-string 이 아니라 중괄호 이스케이프 불필요)
-_MASCOT_RUNTIME = """
-  <script>
-  window.__mbMascot = function(o){
-    var wrap=document.getElementById(o.wrap), btn=document.getElementById(o.btn),
-        bubble=o.bubble?document.getElementById(o.bubble):null;
-    if(!wrap||!btn) return null;
-    var moved=false, dragging=false, sx=0,sy=0,ox=0,oy=0;
-
-    function bubbleOpen(){ return bubble && !bubble.hidden; }
-    function showBubble(v){
-      if(!bubble) return;
-      bubble.hidden=!v;
-      if(v) btn.classList.add('is-active'); else btn.classList.remove('is-active');
-    }
-    function press(){
-      btn.classList.add('is-pressed');
-      setTimeout(function(){ btn.classList.remove('is-pressed'); },160);
-    }
-
-    btn.addEventListener('click', function(){
-      if(moved){ moved=false; return; }   // 드래그였으면 클릭 무시
-      press();
-      if(o.onToggle) o.onToggle({showBubble:showBubble, isOpen:bubbleOpen()});
-    });
-
-    // 위치 복원
-    if(o.posKey){ try{ var p=JSON.parse(localStorage.getItem(o.posKey)||'null');
-      if(p){ wrap.style.left=p.x+'px'; wrap.style.top=p.y+'px';
-             wrap.style.right='auto'; wrap.style.bottom='auto'; } }catch(e){} }
-
-    btn.addEventListener('pointerdown', function(e){
-      dragging=true; moved=false; btn.setPointerCapture(e.pointerId);
-      sx=e.clientX; sy=e.clientY;
-      var r=wrap.getBoundingClientRect(); ox=r.left; oy=r.top;
-      wrap.style.left=ox+'px'; wrap.style.top=oy+'px';
-      wrap.style.right='auto'; wrap.style.bottom='auto';
-    });
-    btn.addEventListener('pointermove', function(e){
-      if(!dragging) return;
-      var dx=e.clientX-sx, dy=e.clientY-sy;
-      if(Math.abs(dx)+Math.abs(dy)>4) moved=true;
-      var nx=Math.max(8, Math.min(window.innerWidth-wrap.offsetWidth-8, ox+dx));
-      var ny=Math.max(8, Math.min(window.innerHeight-wrap.offsetHeight-8, oy+dy));
-      wrap.style.left=nx+'px'; wrap.style.top=ny+'px';
-    });
-    btn.addEventListener('pointerup', function(e){
-      dragging=false; try{ btn.releasePointerCapture(e.pointerId); }catch(_){}
-      if(moved && o.posKey){ try{ var r=wrap.getBoundingClientRect();
-        localStorage.setItem(o.posKey, JSON.stringify({x:r.left,y:r.top})); }catch(_){} }
-    });
-
-    // 숨김(×) 버튼 — 캐릭터를 이 세션 동안만 숨김(새로고침하면 복원)
-    if(o.hideBtn){
-      var hb=document.getElementById(o.hideBtn);
-      if(hb) hb.addEventListener('click', function(e){
-        e.stopPropagation(); wrap.style.display='none';
-      });
-    }
-
-    return {showBubble:showBubble, isOpen:bubbleOpen};
-  };
-  </script>"""
-
-
-def _feedback_html():
-    """좌상단 펭귄 마스코트 + 기본 말풍선 + 클릭 시 피드백 폼. Web3Forms 키 없으면 빈 문자열.
-
-    펭귄도 곰과 같은 마스코트 패턴(드래그·눌림). 말풍선 안에 피드백 폼이 들어간다.
-    제출은 Web3Forms 비동기 전송(페이지 이탈 없음).
-    """
-    key = config.WEB3FORMS_KEY
-    if not key:
-        return ""
-    if config.FEEDBACK_IMAGE:
-        img = config.FEEDBACK_IMAGE
-        if config.SITE_BASE_URL and img.startswith("/"):
-            img = config.SITE_BASE_URL + img
-        figure = f'<img src="{img}" alt="피드백" draggable="false">'
-    else:
-        figure = ('<svg viewBox="0 0 24 24" aria-hidden="true" style="color:var(--accent)">'
-                  '<path d="M4 5h16v11H7l-3 3z" fill="currentColor"/></svg>')
-    return f"""
-  <div class="mascot-wrap mascot-right" id="fbWrap">
-    <div class="mascot-bubble fb-bubble" id="fbBubble" role="dialog" aria-label="피드백" hidden>
-      <button class="mascot-x" id="fbClose" aria-label="닫기">&times;</button>
-      <div class="fb-greet" id="fbGreet">
-        <div class="mascot-bubble-title">반가워요!</div>
-        <div class="mascot-bubble-msg">개선·요청사항이 있으면 저를 눌러주세요!</div>
-      </div>
-      <form id="fbForm" hidden>
-        <div class="mascot-bubble-title">개선·요청사항을 자유롭게 남겨주세요!</div>
-        <input type="hidden" name="access_key" value="{key}">
-        <input type="hidden" name="subject" value="[MarketBrief] 피드백">
-        <input type="hidden" name="from_name" value="MarketBrief 방문자">
-        <textarea name="message" rows="3" required placeholder="여기에 내용을 적어주세요"></textarea>
-        <button type="submit" class="fb-send">보내기</button>
-        <p class="fb-msg" id="fbMsg" hidden></p>
-      </form>
-    </div>
-    <button class="mascot-btn" id="fbBtn" aria-label="피드백 보내기" title="요청·피드백 보내기">
-      {figure}
-    </button>
-    <button class="mascot-hide" id="fbHide" aria-label="마스코트 숨기기" title="숨기기">&times;</button>
-  </div>
-  <script>
-  (function(){{
-    var bubble=document.getElementById('fbBubble'),closeb=document.getElementById('fbClose'),
-        greet=document.getElementById('fbGreet'),
-        form=document.getElementById('fbForm'),msg=document.getElementById('fbMsg');
-    function setMode(m){{
-      var f=(m==='form'); form.hidden=!f; greet.hidden=f;
-      bubble.classList.toggle('mode-form', f);
-    }}
-    setMode('greet');
-
-    // 공통 런타임 + 클릭 시 인사↔피드백폼 전환 (말풍선은 계속 열린 채)
-    var api=window.__mbMascot({{
-      wrap:'fbWrap', btn:'fbBtn', bubble:'fbBubble', posKey:'mb_fb_pos',
-      hideBtn:'fbHide',
-      onToggle:function(ctx){{
-        if(!ctx.isOpen){{ setMode('greet'); ctx.showBubble(true); }}
-        else {{ setMode(form.hidden?'form':'greet'); }}
-      }}
-    }});
-    closeb.addEventListener('click',function(e){{e.stopPropagation();if(api)api.showBubble(false);}});
-
-    // 로드 시 인사 말풍선 항상 표시
-    if(api){{ setMode('greet'); api.showBubble(true); }}
-
-    form.addEventListener('submit',function(e){{
-      e.preventDefault();
-      var data=new FormData(form);
-      msg.hidden=false;msg.textContent='보내는 중…';
-      fetch('https://api.web3forms.com/submit',{{method:'POST',body:data}})
-        .then(function(r){{return r.json();}})
-        .then(function(d){{
-          if(d.success){{msg.textContent='보내주셔서 감사합니다! 🙏';form.reset();
-            setTimeout(function(){{msg.hidden=true;setMode('greet');}},1500);}}
-          else{{msg.textContent='전송 실패 — 잠시 후 다시 시도해주세요.';}}
-        }})
-        .catch(function(){{msg.textContent='전송 실패 — 네트워크를 확인해주세요.';}});
-    }});
-  }})();
-  </script>"""
-
-
-# 분홍 곰 마스코트 (SVG). currentColor 로 테마 accent 를 따라간다.
-_MASCOT_SVG = (
-    '<svg viewBox="0 0 64 64" aria-hidden="true">'
-    '<ellipse cx="32" cy="58" rx="16" ry="4" fill="rgba(0,0,0,.08)"/>'
-    '<circle cx="18" cy="16" r="7" fill="currentColor"/>'
-    '<circle cx="46" cy="16" r="7" fill="currentColor"/>'
-    '<circle cx="18" cy="16" r="3.2" fill="#fff" opacity=".55"/>'
-    '<circle cx="46" cy="16" r="3.2" fill="#fff" opacity=".55"/>'
-    '<circle cx="32" cy="34" r="20" fill="currentColor"/>'
-    '<ellipse cx="32" cy="40" rx="11" ry="9" fill="#fff" opacity=".92"/>'
-    '<circle cx="25" cy="30" r="2.6" fill="#3a2a32"/>'
-    '<circle cx="39" cy="30" r="2.6" fill="#3a2a32"/>'
-    '<circle cx="25.9" cy="29.2" r=".9" fill="#fff"/>'
-    '<circle cx="39.9" cy="29.2" r=".9" fill="#fff"/>'
-    '<ellipse cx="32" cy="37" rx="2.4" ry="1.7" fill="#3a2a32"/>'
-    '<path d="M32 38.6c0 2 1.7 3 3.4 3" fill="none" stroke="#3a2a32" stroke-width="1.4" stroke-linecap="round"/>'
-    '<path d="M32 38.6c0 2-1.7 3-3.4 3" fill="none" stroke="#3a2a32" stroke-width="1.4" stroke-linecap="round"/>'
-    '<circle cx="21" cy="36" r="2.6" fill="#fff" opacity=".5"/>'
-    '<circle cx="43" cy="36" r="2.6" fill="#fff" opacity=".5"/>'
-    '</svg>'
-)
-
-
-def _mascot_html():
-    """우상단 마스코트 + 공지 말풍선. 공지 내용은 notice.json 에서 비동기 로드.
-
-    - 그림: config.MASCOT_IMAGE 가 있으면 PNG, 없으면 내장 SVG 곰.
-    - 드래그: 마스코트를 잡아 화면 어디로든 이동(경계 안). 위치는 localStorage 기억.
-    - 문구 순환: notice.json 의 messages(배열)가 있으면 마스코트 클릭마다 다음 문구로.
-    - 자동 표시: 새 공지(id 변경)면 첫 방문에 1회 말풍선 자동 노출.
-    notice.json 이 없거나 active=false 면 기본 인사만, 자동표시는 없음.
-    """
+# 마스코트(곰·펭귄 등) 부트스트랩. 캐릭터·대사는 characters.json, 동작은 mascots.js
+# 가 담당한다(리포트 페이지엔 설정 전역 + <script> 만 심는다). 갱신 시 두 파일만
+# 고치면 되고 리포트 재생성은 불필요하다.
+def _mascots_html():
     if not config.MASCOT_ENABLED:
         return ""
-    notice_url = config.NOTICE_JSON_PATH
-    if config.SITE_BASE_URL and notice_url.startswith("/"):
-        notice_url = config.SITE_BASE_URL + notice_url
-
-    if config.MASCOT_IMAGE:
-        img = config.MASCOT_IMAGE
-        if config.SITE_BASE_URL and img.startswith("/"):
-            img = config.SITE_BASE_URL + img
-        figure = f'<img src="{img}" alt="마스코트" draggable="false">'
-    else:
-        figure = _MASCOT_SVG
-
-    return f"""
-  <div class="mascot-wrap" id="mascotWrap">
-    <div class="mascot-bubble" id="mascotBubble" role="status" hidden>
-      <button class="mascot-x" id="mascotClose" aria-label="닫기">&times;</button>
-      <div class="mascot-bubble-title" id="mascotTitle"></div>
-      <div class="mascot-bubble-msg" id="mascotMsg"></div>
-    </div>
-    <button class="mascot-btn" id="mascotBtn" aria-label="공지 보기" title="공지 보기">
-      {figure}
-    </button>
-    <button class="mascot-hide" id="mascotHide" aria-label="마스코트 숨기기" title="숨기기">&times;</button>
-  </div>
-  <script>
-  (function(){{
-    var tEl=document.getElementById('mascotTitle'),mEl=document.getElementById('mascotMsg'),
-        closeb=document.getElementById('mascotClose');
-    var DEFAULT={{title:'안녕하세요!',message:'만나서 반가워요. 마켓은 장 중 30분 단위로 업데이트됩니다!'}};
-    var notice=null, msgs=null, idx=0;
-    function setText(title,message){{tEl.textContent=title||DEFAULT.title;mEl.textContent=message||DEFAULT.message;}}
-    function renderCurrent(){{
-      if(msgs&&msgs.length){{var m=msgs[idx%msgs.length];
-        setText((notice&&notice.title)||DEFAULT.title, typeof m==='string'?m:(m&&m.message));}}
-      else setText(notice&&notice.title, notice&&notice.message);
-    }}
-    setText(null,null);
-
-    // 공통 런타임(드래그·눌림·위치기억) + 클릭 시 공지 토글/문구 순환
-    var api=window.__mbMascot({{
-      wrap:'mascotWrap', btn:'mascotBtn', bubble:'mascotBubble', posKey:'mb_mascot_pos',
-      hideBtn:'mascotHide',
-      onToggle:function(ctx){{
-        if(!ctx.isOpen){{ if(msgs&&msgs.length){{renderCurrent();}} ctx.showBubble(true); }}
-        else if(msgs&&msgs.length>1){{ idx++; renderCurrent(); }}
-        else ctx.showBubble(false);
-      }}
-    }});
-    var dismissed=false;
-    closeb.addEventListener('click',function(e){{e.stopPropagation();dismissed=true;if(api)api.showBubble(false);}});
-
-    // 로드 시 기본 말풍선을 항상 표시 (내용은 notice 도착하면 갱신)
-    if(api) api.showBubble(true);
-
-    fetch('{notice_url}',{{cache:'no-store'}})
-      .then(function(r){{return r.ok?r.json():null;}})
-      .then(function(n){{
-        if(!n||n.active===false)return;
-        notice=n; msgs=Array.isArray(n.messages)?n.messages:null; idx=0;
-        renderCurrent();
-        if(api && !dismissed) api.showBubble(true);   // 갱신 후에도 계속 표시
-      }})
-      .catch(function(){{}});
-  }})();
-  </script>"""
+    js_url = "/mascots.js"
+    base = config.SITE_BASE_URL
+    if base and js_url.startswith("/"):
+        js_url = base + js_url
+    cfg = {
+        "url": config.CHARACTERS_JSON_PATH,
+        "base": base,
+        "key": config.WEB3FORMS_KEY,
+    }
+    cfg_json = json.dumps(cfg, ensure_ascii=False)
+    return (
+        f"\n  <script>window.__MB_MASCOT={cfg_json};</script>"
+        f'\n  <script src="{js_url}" defer></script>'
+    )
 
 
 def _og_tags_html(date_str, overall):
@@ -798,15 +571,11 @@ def write_html(path, *, date_str, session, generated_at, overall, by_market, tie
     body += _section_tiers(tiers, theme, tiers_common)
     if sector_tiers:
         body += _section_sector_tiers(sector_tiers, sector_market_avg, theme)
-    feedback = _feedback_html()
-    mascot = _mascot_html()
     html = _PAGE.format(
         date=_date_label(date_str),
         og_tags=_og_tags_html(date_str, overall),
         ga=_ga_html(),
-        mascot_runtime=_MASCOT_RUNTIME if (feedback or mascot) else "",
-        feedback=feedback,
-        mascot=mascot,
+        mascots=_mascots_html(),
         date_nav=_date_nav_html(date_str, date_nav),
         session_label=SESSION_LABEL.get(session, session),
         generated_at=generated_at,
@@ -1344,8 +1113,6 @@ _PAGE = """<!doctype html>
   {body}
   <footer>Market Brief V1 — 시장 분위기 파악용 경량 리포트 · 투자 판단의 근거가 아닙니다.</footer>
 </div>
-{mascot_runtime}
-{feedback}
-{mascot}
+{mascots}
 </body>
 </html>"""
