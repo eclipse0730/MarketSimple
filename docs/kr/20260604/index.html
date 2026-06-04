@@ -372,7 +372,7 @@
                   display:flex; flex-direction:column; align-items:flex-start; gap:10px; }
   .mascot-wrap.mascot-right { left:auto; right:16px; align-items:flex-end; }
   .mascot-right .mascot-bubble::after { left:auto; right:40px; }
-  .mascot-btn { width:108px; height:auto; padding:0; border:none; cursor:grab;
+  .mascot-btn { width:var(--mb-size,108px); height:auto; padding:0; border:none; cursor:grab;
                  touch-action:none; background:none; color:var(--accent); line-height:0;
                  filter:drop-shadow(0 6px 12px rgba(216,138,168,.4));
                  transition:transform .18s ease; animation:mascotBob 3.4s ease-in-out infinite; }
@@ -413,7 +413,7 @@
   .mascot-x { position:absolute; top:6px; right:8px; border:none; background:none; cursor:pointer;
                font-size:18px; line-height:1; color:var(--faint); }
   @media (max-width:430px) {
-    .mascot-btn { width:84px; height:auto; }
+    .mascot-btn { width:var(--mb-size-sm,84px); height:auto; }
     .mascot-bubble { max-width:190px; }
   }
   @media (prefers-reduced-motion:reduce) { .mascot-btn { animation:none; } }
@@ -557,7 +557,7 @@
       <span><b>2026.06.04</b></span><span class="sep">·</span>
       <span><b>Snapshot</b></span><span class="sep">·</span>
       <span>KOSPI · KOSDAQ</span><span class="sep">·</span>
-      <span>기준 2026-06-04 16:11</span>
+      <span>기준 2026-06-04 18:41</span>
     </div>
     <nav class="date-nav" aria-label="날짜 이동"><a class="date-nav-btn prev" href="../20260602/" aria-label="이전 거래일" title="이전 거래일 (2026.06.02)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></a><span class="date-nav-cur mono">2026.06.04</span><span class="date-nav-btn next is-disabled" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></span></nav>
   </header>
@@ -590,7 +590,7 @@
             </div>
           </div>
           <div class="bar" role="img" aria-label="상승 47.1% 하락 47.3%"><span class="seg up"   style="width:47.1%"></span><span class="seg flat" style="width:5.5%"></span><span class="seg down" style="width:47.3%"></span></div>
-          <div class="mkt-flow"><span class="flow-item"><span>기관</span><b class="mono up">+18,091억</b></span><span class="flow-item"><span>외인</span><b class="mono down">-69,529억</b></span><span class="flow-item"><span>개인</span><b class="mono up">+50,159억</b></span></div>
+          <div class="mkt-flow"><span class="flow-item"><span>기관</span><b class="mono up">+15,255억</b></span><span class="flow-item"><span>외인</span><b class="mono down">-66,663억</b></span><span class="flow-item"><span>개인</span><b class="mono up">+50,135억</b></span></div>
         </div>
         <div class="mkt-card">
           <div class="mkt-head">
@@ -617,7 +617,7 @@
             </div>
           </div>
           <div class="bar" role="img" aria-label="상승 45.5% 하락 47.8%"><span class="seg up"   style="width:45.5%"></span><span class="seg flat" style="width:6.7%"></span><span class="seg down" style="width:47.8%"></span></div>
-          <div class="mkt-flow"><span class="flow-item"><span>기관</span><b class="mono up">+2,068억</b></span><span class="flow-item"><span>외인</span><b class="mono down">-426억</b></span><span class="flow-item"><span>개인</span><b class="mono down">-1,637억</b></span></div>
+          <div class="mkt-flow"><span class="flow-item"><span>기관</span><b class="mono up">+2,066억</b></span><span class="flow-item"><span>외인</span><b class="mono down">-424억</b></span><span class="flow-item"><span>개인</span><b class="mono down">-1,633억</b></span></div>
         </div></div>
     </section>
     <section class="reveal tv-section">
