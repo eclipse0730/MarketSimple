@@ -486,7 +486,7 @@ def _ga_html():
 def _mascots_html():
     if not config.MASCOT_ENABLED:
         return ""
-    js_url = "/mascots.js"
+    js_url = "/mascot/mascots.js"
     base = config.SITE_BASE_URL
     if base and js_url.startswith("/"):
         js_url = base + js_url
@@ -921,7 +921,7 @@ _PAGE = """<!doctype html>
                   display:flex; flex-direction:column; align-items:flex-start; gap:10px; }}
   .mascot-wrap.mascot-right {{ left:auto; right:16px; align-items:flex-end; }}
   .mascot-right .mascot-bubble::after {{ left:auto; right:40px; }}
-  .mascot-btn {{ width:108px; height:auto; padding:0; border:none; cursor:grab;
+  .mascot-btn {{ width:var(--mb-size,108px); height:auto; padding:0; border:none; cursor:grab;
                  touch-action:none; background:none; color:var(--accent); line-height:0;
                  filter:drop-shadow(0 6px 12px rgba(216,138,168,.4));
                  transition:transform .18s ease; animation:mascotBob 3.4s ease-in-out infinite; }}
@@ -962,7 +962,7 @@ _PAGE = """<!doctype html>
   .mascot-x {{ position:absolute; top:6px; right:8px; border:none; background:none; cursor:pointer;
                font-size:18px; line-height:1; color:var(--faint); }}
   @media (max-width:430px) {{
-    .mascot-btn {{ width:84px; height:auto; }}
+    .mascot-btn {{ width:var(--mb-size-sm,84px); height:auto; }}
     .mascot-bubble {{ max-width:190px; }}
   }}
   @media (prefers-reduced-motion:reduce) {{ .mascot-btn {{ animation:none; }} }}

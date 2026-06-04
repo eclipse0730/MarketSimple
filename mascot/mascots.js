@@ -110,10 +110,22 @@
     return span.firstChild;
   }
 
+  function px(v) { return typeof v === "number" ? v + "px" : v; }
+
   // 공통 골격: wrap > [bubble] + btn + hide  → body 에 부착하고 참조 반환.
   function shell(c, bubble) {
     var right = c.position === "right";
     var wrap = el("div", "mascot-wrap" + (right ? " mascot-right" : ""));
+
+    // 캐릭터 크기(버튼 폭). 미지정 시 CSS 기본값(데스크톱 108 / 모바일 84) 유지.
+    if (c.size != null) wrap.style.setProperty("--mb-size", px(c.size));
+    if (c.sizeMobile != null) wrap.style.setProperty("--mb-size-sm", px(c.sizeMobile));
+    // 생성 위치(화면 모서리로부터의 간격). x 는 좌/우(position 따라), y 는 하단 기준.
+    if (c.offset) {
+      if (c.offset.x != null) wrap.style[right ? "right" : "left"] = px(c.offset.x);
+      if (c.offset.y != null) wrap.style.bottom = px(c.offset.y);
+    }
+
     if (bubble) wrap.appendChild(bubble);
     var btn = el("button", "mascot-btn", {
       type: "button", "aria-label": c.ariaButton || "마스코트", title: c.ariaButton || ""

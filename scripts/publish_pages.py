@@ -295,13 +295,12 @@ def main(argv=None) -> None:
     elif cname_file.exists():
         cname_file.unlink()
 
-    # 마스코트: 캐릭터·대사 데이터(characters.json) + 렌더러(mascots.js)
-    # → 루트에서 docs 로 복사(재빌드 없이 이 두 파일만 고쳐 갱신).
-    for fname in ("characters.json", "mascots.js"):
-        src = ROOT / fname
-        if src.exists():
-            shutil.copy2(src, DOCS / fname)
-            print(f"  · {fname} 복사")
+    # 마스코트: 캐릭터 폴더(데이터 characters.json + 렌더러 mascots.js) 통째 복사.
+    # → 재빌드 없이 이 폴더만 고치면 갱신된다.
+    mascot_src = ROOT / "mascot"
+    if mascot_src.is_dir():
+        shutil.copytree(mascot_src, DOCS / "mascot", dirs_exist_ok=True)
+        print("  · mascot/ 복사")
 
     # 정적 이미지(마스코트 등): images/ → docs/images/
     images_src = ROOT / "images"

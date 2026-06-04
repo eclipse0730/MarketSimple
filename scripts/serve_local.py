@@ -6,9 +6,9 @@
   python -m scripts.serve_local --port 9000
 
 동작:
-  1) SITE_BASE_URL 을 비워서 빌드 → 이미지/마스코트 경로가 상대(/images, /characters.json)가 됨
+  1) SITE_BASE_URL 을 비워서 빌드 → 이미지/마스코트 경로가 상대(/images, /mascot/…)가 됨
      (로컬 서버 루트에서 이미지가 깨지지 않도록)
-  2) 최신 리포트를 _localtest/index.html 로, images/·characters.json·mascots.js 를 루트에 배치
+  2) 최신 리포트를 _localtest/index.html 로, images/·mascot/ 을 루트에 배치
   3) http 서버 기동 → 같은 와이파이의 폰에서 http://<PC IP>:<port>/ 로 접속
 
 배포(marketbrief.kr)는 publish_pages.py 가 담당한다. 이건 로컬 확인 전용이다.
@@ -62,10 +62,9 @@ def build_and_stage(date: str | None) -> None:
     images = ROOT / "images"
     if images.is_dir():
         shutil.copytree(images, SITE / "images", dirs_exist_ok=True)
-    for fname in ("characters.json", "mascots.js"):
-        src = ROOT / fname
-        if src.exists():
-            shutil.copy2(src, SITE / fname)
+    mascot = ROOT / "mascot"
+    if mascot.is_dir():
+        shutil.copytree(mascot, SITE / "mascot", dirs_exist_ok=True)
 
 
 def serve(port: int) -> None:

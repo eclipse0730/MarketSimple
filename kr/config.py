@@ -62,7 +62,7 @@ FEEDBACK_EMAIL = os.environ.get("FEEDBACK_EMAIL", "ruin2055@gmail.com").strip()
 # "0"/"false"/"off" 면 마스코트 자체를 끈다.
 MASCOT_ENABLED = os.environ.get("MASCOT_ENABLED", "1").strip().lower() not in ("0", "false", "off", "")
 # characters.json 경로 (사이트 루트 기준 절대경로). 날짜 폴더 깊이와 무관하게 항상 루트에서 읽는다.
-CHARACTERS_JSON_PATH = os.environ.get("CHARACTERS_JSON_PATH", "/characters.json").strip()
+CHARACTERS_JSON_PATH = os.environ.get("CHARACTERS_JSON_PATH", "/mascot/characters.json").strip()
 
 
 def report_filename(date_str: str, mode: str) -> str:
