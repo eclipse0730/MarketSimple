@@ -27,7 +27,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install deps
-        run: pip install pandas requests lxml
+        run: pip install pandas requests lxml pillow
 
       - name: Collect + build + publish (intraday)
         env:
@@ -40,7 +40,7 @@ jobs:
         run: |
           # 오늘(KST) 스냅샷 수집 + 리포트 빌드
           python main.py --market kr --force
-          # 장중 발행: 최신 날짜만 갱신 + 썸네일 생략
+          # 장중 발행: 최신 날짜만 갱신 + 새 날짜 썸네일만 생성
           python scripts/publish_pages.py --intraday
 
       - name: Commit & push if changed

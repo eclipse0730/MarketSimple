@@ -128,7 +128,7 @@ def publish_market(market: str, title: str, only_latest: bool = False,
         return False
 
     latest = all_dates[-1]
-    # 장중 모드: 최신 날짜 페이지만 갱신(과거 페이지·썸네일은 건드리지 않음)
+    # 장중 모드: 최신 날짜 페이지만 갱신한다. 썸네일은 새 날짜에 없을 때만 만든다.
     dates = [latest] if only_latest else all_dates
 
     chrome = None if skip_thumb else _find_chrome()
@@ -144,9 +144,13 @@ def publish_market(market: str, title: str, only_latest: bool = False,
         day_dir.mkdir(parents=True, exist_ok=True)
         html = _rewrite_nav_links(src.read_text(encoding="utf-8"))
         _write_text(day_dir / "index.html", html)
-        # 썸네일은 새로 생기는 날짜에만(이미 있으면 유지). 장중엔 skip_thumb 로 생략.
-        if chrome and not (day_dir / "thumb.png").exists():
-            _make_thumbnail(chrome, src, day_dir / "thumb.png")
+        # 썸네일은 새로 생기는 날짜에만 생성한다. 실패해도 OG 이미지가 404가 되지 않게
+        # 직전 날짜 썸네일을 복사한다.
+        thumb = day_dir / "thumb.png"
+        if chrome and not thumb.exists():
+            _make_thumbnail(chrome, src, thumb)
+        if not thumb.exists():
+            _copy_fallback_thumb(out_root, day_dir, date_str)
 
     # 최신으로 리다이렉트 (카톡 공유는 항상 /<market>/ 한 줄만)
     _write_text(out_root / "index.html", _redirect_page(title, f"{latest}/"))
@@ -160,6 +164,22 @@ def _prefix(market: str) -> str:
         return config.REPORT_FILENAME_PREFIX
     from us import config  # type: ignore
     return getattr(config, "REPORT_FILENAME_PREFIX", "Report")
+
+
+def _copy_fallback_thumb(out_root: Path, day_dir: Path, date_str: str) -> bool:
+    """현재 날짜 썸네일이 없으면 가장 가까운 이전 썸네일을 복사한다."""
+    candidates = []
+    for p in out_root.glob("*/thumb.png"):
+        if not p.parent.name.isdigit() or p.parent == day_dir:
+            continue
+        if p.parent.name <= date_str:
+            candidates.append(p)
+    if not candidates:
+        return False
+    src = sorted(candidates, key=lambda p: p.parent.name)[-1]
+    shutil.copy2(src, day_dir / "thumb.png")
+    print(f"  · [안내] {day_dir.name} 썸네일 대체: {src.parent.name}/thumb.png 복사")
+    return True
 
 
 def _redirect_page(title: str, target: str) -> str:
@@ -203,10 +223,12 @@ def main(argv=None) -> None:
     import argparse
     ap = argparse.ArgumentParser(description="GitHub Pages 발행")
     ap.add_argument("--intraday", action="store_true",
-                    help="장중 모드: 최신 날짜만 갱신 + 썸네일 생략(저장소 폭증 방지)")
+                    help="장중 모드: 최신 날짜만 갱신 + 새 날짜 썸네일만 생성")
+    ap.add_argument("--skip-thumb", action="store_true",
+                    help="썸네일 캡처 생략. 없으면 직전 썸네일로 대체")
     args = ap.parse_args(argv)
     only_latest = args.intraday
-    skip_thumb = args.intraday
+    skip_thumb = args.skip_thumb
 
     DOCS.mkdir(parents=True, exist_ok=True)
     _write_text(DOCS / ".nojekyll", "")
