@@ -74,6 +74,59 @@ def _write_text(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8")
 
 
+# 배포된 날짜 페이지의 prev/next 링크 (이미 ../YYYYMMDD/ 경로 형태)
+NAV_LINK_RE = re.compile(
+    r'(<a class="date-nav-btn (prev|next)" href=")\.\./(\d{8})/'
+    r'("\s+aria-label="[^"]*"\s+title="[^"]*\()(\d{4}\.\d{2}\.\d{2})(\)")'
+)
+
+
+def _heal_nav_links(market_root: Path) -> int:
+    """배포된 모든 날짜 페이지의 date-nav 링크를 실제 존재하는 날짜로 교정한다.
+
+    휴장일 데이터 제거 등으로 이웃 날짜 폴더가 사라지면, 장중(intraday) 모드에서
+    재생성되지 않은 옆 날짜 페이지의 prev/next 링크가 404가 된다. publish 마다
+    전체 페이지를 훑어, 끊긴 링크를 같은 방향의 가장 가까운 실재 날짜로 재지정한다.
+    """
+    if not market_root.is_dir():
+        return 0
+    dates = sorted(d.name for d in market_root.iterdir()
+                   if d.is_dir() and d.name.isdigit() and len(d.name) == 8)
+    dateset = set(dates)
+    if not dateset:
+        return 0
+
+    fixed = 0
+    for cur in dates:
+        idx_file = market_root / cur / "index.html"
+        if not idx_file.exists():
+            continue
+        html = idx_file.read_text(encoding="utf-8")
+
+        def repl(m):
+            nonlocal fixed
+            kind, target = m.group(2), m.group(3)
+            if target in dateset:
+                return m.group(0)
+            # 같은 방향의 가장 가까운 실재 날짜(없으면 현재 날짜 = 자기링크로 404만 회피)
+            if kind == "next":
+                cands = [d for d in dates if d > cur]
+                new = min(cands) if cands else cur
+            else:
+                cands = [d for d in dates if d < cur]
+                new = max(cands) if cands else cur
+            fixed += 1
+            label = f"{new[:4]}.{new[4:6]}.{new[6:]}"
+            return f"{m.group(1)}../{new}/{m.group(4)}{label}{m.group(6)}"
+
+        new_html = NAV_LINK_RE.sub(repl, html)
+        if new_html != html:
+            idx_file.write_text(new_html, encoding="utf-8")
+    if fixed:
+        print(f"  · {market_root.name}: 끊긴 날짜 링크 {fixed}건 교정")
+    return fixed
+
+
 def _make_thumbnail(chrome: str, html_path: Path, out_png: Path) -> bool:
     """리포트 상단을 1200×630 OG 썸네일로 캡처한다. 실패해도 배포는 진행."""
     try:
@@ -258,6 +311,9 @@ def main(argv=None) -> None:
 
     kr_ready = publish_market("kr", "KR Market Brief", only_latest, skip_thumb)
     us_ready = publish_market("us", "US Market Brief", only_latest, skip_thumb)
+    # 배포 후 전체 페이지의 끊긴 날짜 링크 교정(휴장일 제거 등으로 생긴 404 방지)
+    _heal_nav_links(DOCS / "kr")
+    _heal_nav_links(DOCS / "us")
     # 루트 진입 시 KR 최신 리포트로 바로 이동 (KR이 메인). KR이 없으면 선택 메뉴 폴백.
     if kr_ready:
         _write_text(DOCS / "index.html", _redirect_page("Market Brief", "kr/"))
