@@ -27,6 +27,13 @@ REPORT_RE = re.compile(r"\[(\d{8})\]_mode1\.html$")
 # 리포트 내 날짜 이동 버튼: href="<url인코딩된 …[YYYYMMDD]_mode1.html>"
 NAV_HREF_RE = re.compile(r'(class="date-nav-btn (?:prev|next)" href=")([^"]+)(")')
 
+# 게시할 시장 목록 — 시장 추가/제거는 여기 한 줄. landing=True 인 시장이 루트(/) 기본.
+# 게시·링크교정·홈페이지가 모두 이 목록을 돌므로 kr/us 가 코드상 완전 대칭이다.
+MARKETS = [
+    {"key": "kr", "title": "KR Market Brief", "landing": True},
+    {"key": "us", "title": "US Market Brief"},
+]
+
 CHROME_CANDIDATES = [
     r"C:\Program Files\Google\Chrome\Application\chrome.exe",
     r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
@@ -264,9 +271,8 @@ def _custom_domain() -> str:
     """
     domain = os.environ.get("CUSTOM_DOMAIN", "").strip()
     if not domain:
-        from kr import config
-        host = urlparse(config.SITE_BASE_URL).netloc
-        domain = host
+        # 도메인은 사이트(전체) 소유 — 특정 시장 패키지에 의존하지 않게 환경변수로 직접 읽는다.
+        domain = urlparse(os.environ.get("SITE_BASE_URL", "")).netloc
     if not domain or domain.endswith(".github.io"):
         return ""
     return domain
@@ -308,20 +314,27 @@ def main(argv=None) -> None:
         shutil.copytree(images_src, DOCS / "images", dirs_exist_ok=True)
         print("  · images/ 복사")
 
-    kr_ready = publish_market("kr", "KR Market Brief", only_latest, skip_thumb)
-    us_ready = publish_market("us", "US Market Brief", only_latest, skip_thumb)
-    # 배포 후 전체 페이지의 끊긴 날짜 링크 교정(휴장일 제거 등으로 생긴 404 방지)
-    _heal_nav_links(DOCS / "kr")
-    _heal_nav_links(DOCS / "us")
-    # 루트 진입 시 KR 최신 리포트로 바로 이동 (KR이 메인). KR이 없으면 선택 메뉴 폴백.
-    if kr_ready:
-        _write_text(DOCS / "index.html", _redirect_page("Market Brief", "kr/"))
+    ready = {}
+    for m in MARKETS:
+        ready[m["key"]] = publish_market(m["key"], m["title"], only_latest, skip_thumb)
+        # 배포 후 끊긴 날짜 링크 교정(휴장일 제거 등으로 생긴 404 방지)
+        _heal_nav_links(DOCS / m["key"])
+
+    # 루트(/) 진입 시 landing 시장 최신 리포트로 이동. 없으면 선택 메뉴 폴백.
+    landing = next((m["key"] for m in MARKETS if m.get("landing")), None)
+    if landing and ready.get(landing):
+        _write_text(DOCS / "index.html", _redirect_page("Market Brief", f"{landing}/"))
     else:
-        _write_text(DOCS / "index.html", _home_page(kr_ready, us_ready))
+        _write_text(DOCS / "index.html", _home_page(ready))
     print("✔ docs/ 갱신 완료")
 
 
-def _home_page(kr_ready: bool, us_ready: bool) -> str:
+def _home_page(ready: dict) -> str:
+    links = "\n".join(
+        f'    <a href="{m["key"]}/">{m["key"].upper()} 최신 리포트'
+        f'<small>{"게시됨" if ready.get(m["key"]) else "아직 없음"}</small></a>'
+        for m in MARKETS
+    )
     return f"""<!doctype html>
 <html lang="ko">
 <head>
@@ -344,8 +357,7 @@ def _home_page(kr_ready: bool, us_ready: bool) -> str:
   <h1>Market Brief</h1>
   <p>시장 분위기 파악용 경량 리포트입니다.</p>
   <div class="links">
-    <a href="kr/">KR 최신 리포트<small>{'게시됨' if kr_ready else '아직 없음'}</small></a>
-    <a href="us/">US 최신 리포트<small>{'게시됨' if us_ready else '아직 없음'}</small></a>
+{links}
   </div>
 </main></body>
 </html>
