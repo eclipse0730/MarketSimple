@@ -181,7 +181,7 @@ def _section_market(by_market):
           {_market_flow_row(c)}
         </div>"""
     return f"""
-    <section class="reveal">
+    <section class="reveal" id="sec-market">
       <div class="sec-head">{_section_icon("market", "시장별 요약")}<h2>시장별 요약</h2></div>
       <div class="mkt-grid">{cards}</div>
     </section>"""
@@ -262,7 +262,7 @@ def _section_tiers(tiers, theme, tiers_common=None):
         toggle = switch = common_block = ""
 
     return f"""
-    <section class="reveal">
+    <section class="reveal" id="sec-tiers">
       {toggle}
       <div class="sec-head">{_section_icon("tier", "종목 Tier")}<h2>종목 Tier</h2>{switch}</div>
       {common_block}
@@ -340,7 +340,7 @@ def _tv_section(*, icon, title, all_rows, common_rows, toggle_id, meta_fn):
         common_grid = toggle = switch = ""
 
     return f"""
-    <section class="reveal tv-section">
+    <section class="reveal tv-section" id="sec-{icon}">
       {toggle}
       <div class="sec-head">{_section_icon(icon, title)}<h2>{title}</h2>{switch}</div>
       {common_grid}
@@ -415,7 +415,7 @@ def _section_sector_tiers(sector_tiers, market_avg, theme):
         return ""
     rows = _sector_tier_rows(sector_tiers, theme)
     return f"""
-    <section class="reveal">
+    <section class="reveal" id="sec-sector">
       <div class="sec-head">{_section_icon("sector", "섹터 Tier")}<h2>섹터 Tier</h2>
         <span class="sec-note">시장평균 {_fmt(market_avg)}% 기준 · 값은 초과수익(%p)</span></div>
       <div class="tiers">{rows}</div>
