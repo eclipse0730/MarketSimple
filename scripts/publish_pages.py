@@ -224,8 +224,9 @@ def publish_market(market: str, title: str, only_latest: bool = False,
         if not thumb.exists():
             _copy_fallback_thumb(out_root, day_dir, date_str)
 
-    # 최신으로 리다이렉트 (카톡 공유는 항상 /<market>/ 한 줄만)
-    _write_text(out_root / "index.html", _redirect_page(title, f"{latest}/"))
+    # 최신으로 리다이렉트 (카톡 공유는 항상 /<market>/ 한 줄만). OG 로 최신 썸네일 노출.
+    _write_text(out_root / "index.html",
+                _redirect_page(title, f"{latest}/", _redirect_og(market, latest)))
     print(f"  · {market}: {len(dates)}일 게시 (최신 {latest})")
     return True
 
@@ -254,12 +255,47 @@ def _copy_fallback_thumb(out_root: Path, day_dir: Path, date_str: str) -> bool:
     return True
 
 
-def _redirect_page(title: str, target: str) -> str:
+OG_DESC = "거래대금·거래량 Top30, 종목·섹터 Tier — 시장 분위기 요약(매일 갱신)"
+
+
+def _og_meta(page_url: str, img_url: str, title: str, desc: str = OG_DESC) -> str:
+    """리다이렉트 페이지용 Open Graph/트위터 카드 메타.
+
+    카톡·SNS 는 meta-refresh 를 따라가지 않고 이 HTML 만 긁으므로, 여기에 og:image 가
+    없으면 루트(marketbrief.kr) 공유 시 썸네일이 안 뜬다(날짜 URL 만 떴던 이유).
+    """
+    return "\n".join([
+        '<meta property="og:type" content="website">',
+        f'<meta property="og:title" content="{title}">',
+        f'<meta property="og:description" content="{desc}">',
+        f'<meta property="og:url" content="{page_url}">',
+        f'<meta property="og:image" content="{img_url}">',
+        '<meta property="og:image:width" content="1200">',
+        '<meta property="og:image:height" content="630">',
+        '<meta name="twitter:card" content="summary_large_image">',
+        f'<meta name="twitter:title" content="{title}">',
+        f'<meta name="twitter:image" content="{img_url}">',
+    ])
+
+
+def _redirect_og(market: str, latest: str, *, root: bool = False) -> str:
+    """배포 기준 URL(SITE_BASE_URL)이 있으면 최신 날짜 썸네일로 OG 메타를 만든다."""
+    base = os.environ.get("SITE_BASE_URL", "").rstrip("/")
+    if not base or not latest:
+        return ""
+    page_url = f"{base}/" if root else f"{base}/{market}/"
+    img_url = f"{base}/{market}/{latest}/thumb.png"
+    title = "Market Brief · 데일리 브리프" if root else f"{market.upper()} Market Brief · 데일리 브리프"
+    return _og_meta(page_url, img_url, title)
+
+
+def _redirect_page(title: str, target: str, og: str = "") -> str:
     return f"""<!doctype html>
 <html lang="ko">
 <meta charset="utf-8">
 <meta http-equiv="refresh" content="0; url={target}">
 <title>{title}</title>
+{og}
 <p><a href="{target}">{title} 최신 리포트 열기</a></p>
 </html>
 """
@@ -336,7 +372,10 @@ def main(argv=None) -> None:
     # 루트(/) 진입 시 landing 시장 최신 리포트로 이동. 없으면 선택 메뉴 폴백.
     landing = next((m["key"] for m in MARKETS if m.get("landing")), None)
     if landing and ready.get(landing):
-        _write_text(DOCS / "index.html", _redirect_page("Market Brief", f"{landing}/"))
+        latest = _report_dates(landing)[-1] if _report_dates(landing) else ""
+        _write_text(DOCS / "index.html",
+                    _redirect_page("Market Brief", f"{landing}/",
+                                   _redirect_og(landing, latest, root=True)))
     else:
         _write_text(DOCS / "index.html", _home_page(ready))
     print("✔ docs/ 갱신 완료")
