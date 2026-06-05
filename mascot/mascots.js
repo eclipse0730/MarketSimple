@@ -172,6 +172,33 @@
     return x;
   }
 
+  // 방문자 기준 KST 시(0~23). 어느 타임존에서 보든 한국시간으로 환산.
+  function kstHour() {
+    var d = new Date();
+    var kst = new Date(d.getTime() + d.getTimezoneOffset() * 60000 + 9 * 3600000);
+    return kst.getHours();
+  }
+  // 시간대 버킷: morning / lunch / afterClose / night (characters.json 의 byTime 키와 일치)
+  function timeKey() {
+    var h = kstHour();
+    if (h >= 5 && h < 11) return "morning";
+    if (h >= 11 && h < 14) return "lunch";
+    if (h >= 14 && h < 18) return "afterClose";
+    return "night";
+  }
+  // 공지 대사 풀: byMarket[추세] → byTime[시간대] → messages 순으로 합친다.
+  // 앞쪽일수록 더 맥락적(자동 노출 시 첫 문구). 빈 배열/누락은 건너뛴다.
+  function noticeMessages(c) {
+    var ctx = window.__MB_CTX || {};
+    var pool = [];
+    var bm = c.byMarket && ctx.trend ? c.byMarket[ctx.trend] : null;
+    if (Array.isArray(bm)) pool = pool.concat(bm);
+    var bt = c.byTime ? c.byTime[timeKey()] : null;
+    if (Array.isArray(bt)) pool = pool.concat(bt);
+    if (Array.isArray(c.messages)) pool = pool.concat(c.messages);
+    return pool.length ? pool : null;
+  }
+
   // ── 타입: notice (공지 말풍선 + 문구 순환) ──
   function mountNotice(c) {
     var bubble = el("div", "mascot-bubble", { role: "status", hidden: "" });
@@ -181,7 +208,7 @@
     bubble.appendChild(x); bubble.appendChild(title); bubble.appendChild(msg);
 
     var parts = shell(c, bubble);
-    var msgs = Array.isArray(c.messages) ? c.messages : null;
+    var msgs = noticeMessages(c);
     var idx = 0;
 
     function setText(t, m) {

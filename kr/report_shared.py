@@ -483,10 +483,29 @@ def _ga_html():
     )
 
 
+def _market_ctx(date_str, session, overall):
+    """마스코트가 그날 시장 분위기로 대사를 고를 수 있도록 페이지에 주입할 컨텍스트.
+
+    추세(trend)는 그 날짜 데이터 기준이라 페이지마다 baked 된다. 대사 '텍스트'는
+    characters.json 에 두므로, 문구만 바꿀 땐 재빌드가 필요 없다(플래그만 baked).
+    """
+    if not overall:
+        return {"date": date_str, "session": session}
+    up, down = overall.get("up", 0), overall.get("down", 0)
+    trend = "up" if up > down else "down" if down > up else "flat"
+    return {
+        "date": date_str,
+        "session": session,
+        "trend": trend,
+        "upPct": overall.get("up_pct"),
+        "downPct": overall.get("down_pct"),
+    }
+
+
 # 마스코트(곰·펭귄 등) 부트스트랩. 캐릭터·대사는 characters.json, 동작은 mascots.js
 # 가 담당한다(리포트 페이지엔 설정 전역 + <script> 만 심는다). 갱신 시 두 파일만
-# 고치면 되고 리포트 재생성은 불필요하다.
-def _mascots_html():
+# 고치면 되고 리포트 재생성은 불필요하다. __MB_CTX(시장 추세)만 페이지에 baked.
+def _mascots_html(ctx=None):
     if not config.MASCOT_ENABLED:
         return ""
     js_url = "/mascot/mascots.js"
@@ -499,7 +518,12 @@ def _mascots_html():
         "key": config.WEB3FORMS_KEY,
     }
     cfg_json = json.dumps(cfg, ensure_ascii=False)
+    ctx_script = ""
+    if ctx:
+        ctx_json = json.dumps(ctx, ensure_ascii=False)
+        ctx_script = f"\n  <script>window.__MB_CTX={ctx_json};</script>"
     return (
+        f"{ctx_script}"
         f"\n  <script>window.__MB_MASCOT={cfg_json};</script>"
         f'\n  <script src="{js_url}" defer></script>'
     )
@@ -578,7 +602,7 @@ def write_html(path, *, date_str, session, generated_at, overall, by_market, tie
         date=_date_label(date_str),
         og_tags=_og_tags_html(date_str, overall),
         ga=_ga_html(),
-        mascots=_mascots_html(),
+        mascots=_mascots_html(_market_ctx(date_str, session, overall)),
         date_nav=_date_nav_html(date_str, date_nav),
         session_label=SESSION_LABEL.get(session, session),
         generated_at=generated_at,
