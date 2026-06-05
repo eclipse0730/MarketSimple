@@ -65,9 +65,9 @@ MASCOT_ENABLED = os.environ.get("MASCOT_ENABLED", "1").strip().lower() not in ("
 CHARACTERS_JSON_PATH = os.environ.get("CHARACTERS_JSON_PATH", "/mascot/characters.json").strip()
 
 
-def report_filename(date_str: str, mode: str) -> str:
+def report_filename(date_str: str) -> str:
     """리포트 HTML 파일명 규칙(단일 출처). 날짜 네비게이션 링크도 이걸 쓴다."""
-    return f"{REPORT_FILENAME_PREFIX} [{date_str}]_{mode}.html"
+    return f"{REPORT_FILENAME_PREFIX} [{date_str}].html"
 
 # ──────────────────────────────────────────────
 # 티어 정의: (티어이름, 하한[포함], 상한[미포함])

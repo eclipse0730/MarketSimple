@@ -6,7 +6,7 @@ from html import escape
 from urllib.parse import quote
 
 from . import config
-from .report_themes import get_theme
+from .report_themes import DEFAULT_THEME, all_themes_css, get_theme, theme_ids
 
 SESSION_LABEL = {"snapshot": "Snapshot"}
 
@@ -22,6 +22,10 @@ TIER_COLLAPSE_LIMITS = {"B": 10, "C": 10, "D": 10, "E": 10}
 
 def write_csv(df, path):
     df.to_csv(path, index=False, encoding="utf-8-sig")  # 엑셀 한글 깨짐 방지
+
+
+def write_theme_map(df, path):
+    df.to_csv(path, index=False, encoding="utf-8-sig")
 
 
 # ──────────────────────────────────────────────
@@ -185,10 +189,10 @@ def _section_market(by_market):
 
 def _tier_rows(tiers, theme):
     rows = ""
-    tier_colors = theme["tier_colors"]
     for name, lo, hi in config.TIERS:
         sub = tiers[name]
-        color = tier_colors.get(name, "#888")
+        # 티어 강조색은 테마 변수(--tier-X-2)를 참조 → data-theme 변경 시 실시간 반영
+        color = f"var(--tier-{name}-2, #888)"
         # 티어 범위 라벨
         if hi >= 999:
             rng = f"+{lo:.0f}% 이상"
@@ -371,10 +375,9 @@ def _sector_chip(row):
 
 def _sector_tier_rows(sector_tiers, theme):
     rows = ""
-    tier_colors = theme["tier_colors"]
     for name, lo, hi in config.SECTOR_TIERS:
         sub = sector_tiers[name]
-        color = tier_colors.get(name, "#888")
+        color = f"var(--tier-{name}-2, #888)"
         if hi >= 999:
             rng = f"+{lo:.1f}%p 이상"
         elif lo <= -999:
@@ -562,7 +565,7 @@ def _date_nav_html(date_str, date_nav):
     )
 
 
-def write_html(path, *, date_str, session, generated_at, overall, by_market, tiers, top=None, bottom=None, sector_top=None, sector_bottom=None, sector_tiers=None, sector_market_avg=None, big_theme=None, top_value=None, top_value_common=None, top_volume=None, top_volume_common=None, tiers_common=None, date_nav=None, theme_name="mode1"):
+def write_html(path, *, date_str, session, generated_at, overall, by_market, tiers, top=None, bottom=None, sector_top=None, sector_bottom=None, sector_tiers=None, sector_market_avg=None, big_theme=None, top_value=None, top_value_common=None, top_volume=None, top_volume_common=None, tiers_common=None, date_nav=None, theme_name=DEFAULT_THEME):
     theme = get_theme(theme_name)
     body = _section_market(by_market)
     #body += _section_heatmap(big_theme)
@@ -581,7 +584,9 @@ def write_html(path, *, date_str, session, generated_at, overall, by_market, tie
         generated_at=generated_at,
         report_title=config.MARKET_NAME,
         market_subtitle=config.MARKET_SUBTITLE,
-        theme_css=theme["css"],
+        themes_css=all_themes_css(theme_name),
+        default_theme=theme_name,
+        theme_ids_json=json.dumps(theme_ids(), ensure_ascii=False),
         body=body,
     )
     with open(path, "w", encoding="utf-8") as f:
@@ -589,18 +594,27 @@ def write_html(path, *, date_str, session, generated_at, overall, by_market, tie
 
 
 _PAGE = """<!doctype html>
-<html lang="ko">
+<html lang="ko" data-theme="{default_theme}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Market Brief — {date} {session_label}</title>
+<script>
+  // 사용 가능한 테마 목록 + 기본값. 카멜레온(테마 캐릭터)과 아래 폴백 스크립트가 공유.
+  window.__MB_THEMES={{"list":{theme_ids_json},"def":"{default_theme}"}};
+  // FOUC 방지: 저장된 테마를 그리기 전에 곧바로 적용(목록에 있는 값만).
+  (function(){{try{{var t=localStorage.getItem("mb_theme");
+    if(t&&window.__MB_THEMES.list.indexOf(t)>=0)
+      document.documentElement.setAttribute("data-theme",t);
+  }}catch(e){{}}}})();
+</script>
 {og_tags}
 {ga}
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=Quicksand:wght@400;500;600;700&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
-{theme_css}
+{themes_css}
   * {{ box-sizing:border-box; }}
   html {{ scroll-behavior:smooth; }}
   body {{

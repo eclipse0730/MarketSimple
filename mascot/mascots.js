@@ -101,13 +101,40 @@
   var FALLBACK_SVG =
     '<svg viewBox="0 0 24 24" aria-hidden="true" style="color:var(--accent)">' +
     '<path d="M4 5h16v11H7l-3 3z" fill="currentColor"/></svg>';
-  function figure(c) {
-    if (c.image) {
-      return el("img", null, { src: asset(c.image), alt: c.ariaButton || c.id, draggable: "false" });
+  // 이미지가 없을 때의 대체 그림. placeholder 문구가 있으면 임시 텍스트 카드,
+  // 없으면 기본 말풍선 SVG. (테마에 맞춰 색이 바뀌도록 CSS 변수 사용)
+  function fallbackFigure(c) {
+    if (c && c.placeholder) {
+      var card = el("div", "mascot-ph");
+      card.style.cssText = [
+        "width:100%", "min-height:64px", "box-sizing:border-box",
+        "display:flex", "flex-direction:column", "align-items:center",
+        "justify-content:center", "gap:1px", "padding:14px 8px",
+        "border-radius:20px", "color:#fff",
+        "background:linear-gradient(135deg,var(--accent),var(--up))",
+        "font-family:var(--round,sans-serif)", "font-weight:800",
+        "font-size:14px", "line-height:1.18", "text-align:center",
+        "box-shadow:0 6px 14px rgba(0,0,0,.18)"
+      ].join(";");
+      String(c.placeholder).split("\n").forEach(function (line) {
+        var s = el("span"); s.textContent = line; card.appendChild(s);
+      });
+      return card;
     }
     var span = el("span");
     span.innerHTML = FALLBACK_SVG;
     return span.firstChild;
+  }
+  function figure(c) {
+    if (c.image) {
+      var img = el("img", null, { src: asset(c.image), alt: c.ariaButton || c.id, draggable: "false" });
+      // 이미지가 아직 없으면(404 등) placeholder/SVG 로 대체 — 나중에 파일만 넣으면 그대로 표시.
+      img.addEventListener("error", function () {
+        if (img.parentNode) img.parentNode.replaceChild(fallbackFigure(c), img);
+      });
+      return img;
+    }
+    return fallbackFigure(c);
   }
 
   function px(v) { return typeof v === "number" ? v + "px" : v; }
@@ -254,7 +281,63 @@
     });
   }
 
-  var TYPES = { notice: mountNotice, feedback: mountFeedback };
+  // ── 타입: theme (카멜레온 — 클릭마다 화면 테마 순환) ──
+  // <html data-theme> 만 바꾸면 페이지에 함께 심긴 모든 테마 중 하나가 즉시 적용된다.
+  // 선택값은 localStorage("mb_theme") 에 저장돼 날짜를 넘겨도 유지된다.
+  function mountTheme(c) {
+    var cfg = window.__MB_THEMES || {};
+    // 라벨은 characters.json(themes)이 우선, 없으면 페이지가 심은 목록을 사용.
+    var themes = (Array.isArray(c.themes) && c.themes.length)
+      ? c.themes
+      : (cfg.list || []).map(function (id) { return { id: id, label: id }; });
+    if (!themes.length) return;
+    var ids = themes.map(function (t) { return t.id; });
+
+    function labelOf(id) {
+      for (var i = 0; i < themes.length; i++) if (themes[i].id === id) return themes[i].label || id;
+      return id;
+    }
+    function curId() {
+      var t = document.documentElement.getAttribute("data-theme");
+      return ids.indexOf(t) >= 0 ? t : (cfg.def || ids[0]);
+    }
+    function apply(id) {
+      document.documentElement.setAttribute("data-theme", id);
+      try { localStorage.setItem("mb_theme", id); } catch (e) {}
+    }
+
+    var bubble = el("div", "mascot-bubble", { role: "status", hidden: "" });
+    var x = closeBtn();
+    var title = el("div", "mascot-bubble-title");
+    var msg = el("div", "mascot-bubble-msg");
+    bubble.appendChild(x); bubble.appendChild(title); bubble.appendChild(msg);
+
+    var parts = shell(c, bubble);
+
+    function render() {
+      title.textContent = c.title || "테마 변경";
+      msg.textContent = "현재 «" + labelOf(curId()) + "» · 누르면 다음 테마로 바뀌어요";
+    }
+    render();
+
+    var api = runtime({
+      wrap: parts.wrap, btn: parts.btn, bubble: bubble,
+      posKey: "mb_" + c.id + "_pos", hideBtn: parts.hide,
+      onToggle: function (ctx) {
+        if (!ctx.isOpen) { render(); ctx.showBubble(true); return; }
+        // 이미 열려 있으면 다음 테마로 순환
+        var i = ids.indexOf(curId());
+        apply(ids[(i + 1) % ids.length]);
+        render();
+      }
+    });
+    x.addEventListener("click", function (e) {
+      e.stopPropagation(); if (api) api.showBubble(false);
+    });
+    if (api && c.autoOpen) { render(); api.showBubble(true); }
+  }
+
+  var TYPES = { notice: mountNotice, feedback: mountFeedback, theme: mountTheme };
 
   function start(data) {
     var list = (data && data.characters) || [];

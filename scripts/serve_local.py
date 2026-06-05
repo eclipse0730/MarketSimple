@@ -48,13 +48,13 @@ def build_and_stage(date: str | None) -> None:
     sys.path.insert(0, str(ROOT))
     from kr.main import main as kr_main
 
-    argv = ["--mode", "mode1"]   # kr.main 은 --market 을 모른다(상위 main.py 가 처리)
+    argv = []   # kr.main 은 --market 을 모른다(상위 main.py 가 처리). 모드는 mode1 단일.
     if date:
         argv += ["--date", date]
     kr_main(argv)
 
     SITE.mkdir(parents=True, exist_ok=True)
-    reports = sorted((ROOT / "output" / "kr" / "report").glob("*_mode1.html"))
+    reports = sorted((ROOT / "output" / "kr" / "report").glob("*].html"))
     if not reports:
         raise SystemExit("리포트가 없습니다. 먼저 데이터를 수집하세요.")
     shutil.copy2(reports[-1], SITE / "index.html")

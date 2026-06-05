@@ -20,16 +20,12 @@ import pandas as pd
 from . import analyzer
 from . import collector as data_collector
 from . import config
-from . import report
-from . import report_mode1
-from . import report_mode2
+from . import report_shared
 
+# 리포트 HTML 은 단일 렌더러(report_shared)로 생성한다. 시각 테마(파스텔/다크/전문가/
+# 세피아)는 페이지에 모두 임베드돼 런타임에 카멜레온으로 전환되므로, 초기 테마는
+# report_shared.write_html 의 기본값(report_themes.DEFAULT_THEME)을 그대로 따른다.
 
-REPORT_MODES = {
-    "classic": report,
-    "mode1": report_mode1,
-    "mode2": report_mode2,
-}
 
 def load_theme_map(date_str: str, collector_module, source_name: str):
     maps = []
@@ -184,7 +180,7 @@ def available_report_dates(data_dir: str) -> list[str]:
     return sorted(dates)
 
 
-def build_date_nav(date_str: str, all_dates: list[str], mode: str) -> dict:
+def build_date_nav(date_str: str, all_dates: list[str]) -> dict:
     """현재 날짜 기준 이전/다음 리포트 파일명(같은 폴더 상대경로)을 계산.
 
     이전/다음이 없으면 None. 링크 대상 HTML은 일괄 빌드 시 함께 생성된다.
@@ -193,9 +189,9 @@ def build_date_nav(date_str: str, all_dates: list[str], mode: str) -> dict:
     if date_str in all_dates:
         i = all_dates.index(date_str)
         if i > 0:
-            prev_link = config.report_filename(all_dates[i - 1], mode)
+            prev_link = config.report_filename(all_dates[i - 1])
         if i < len(all_dates) - 1:
-            next_link = config.report_filename(all_dates[i + 1], mode)
+            next_link = config.report_filename(all_dates[i + 1])
     return {
         "prev_date": all_dates[all_dates.index(date_str) - 1] if prev_link else None,
         "prev_link": prev_link,
@@ -224,8 +220,6 @@ def main(argv=None):
 
     ap = argparse.ArgumentParser(description="Market Brief V1")
     ap.add_argument("--date", type=parse_date, help="기준일 YYYYMMDD (예: 20260529)")
-    ap.add_argument("--mode", choices=sorted(REPORT_MODES), default="mode1",
-                    help="HTML 리포트 디자인 모드 (기본: mode1)")
     ap.add_argument("--force", action="store_true",
                     help="기존 날짜 CSV/리포트를 현재 스냅샷으로 갱신")
     ap.add_argument("--collector", action="store_true",
@@ -247,7 +241,7 @@ def main(argv=None):
 
     csv_path = os.path.join(data_dir, f"market_{date_str}.csv")
     theme_map_path = os.path.join(theme_dir, f"theme_map_{date_str}.csv")
-    html_path = os.path.join(report_dir, config.report_filename(date_str, args.mode))
+    html_path = os.path.join(report_dir, config.report_filename(date_str))
 
     print(f"▶ Market Brief V1  |  {date_str}")
 
@@ -269,7 +263,7 @@ def main(argv=None):
             print(f"  · 직전 거래일과 데이터 동일 — 휴장/장전으로 판단, 생성 중단")
             return
 
-        report.write_csv(df, csv_path)
+        report_shared.write_csv(df, csv_path)
 
     if args.collector:
         elapsed = time.time() - started
@@ -310,10 +304,9 @@ def main(argv=None):
         print(f"  · 대테마: {len(big_theme)}개 / 매핑 종목 {len(big_theme_map):,}")
 
     # 3) 출력
-    report.write_theme_map(theme_map, theme_map_path)
-    date_nav = build_date_nav(date_str, available_report_dates(data_dir), args.mode)
-    renderer = REPORT_MODES[args.mode]
-    renderer.write_html(
+    report_shared.write_theme_map(theme_map, theme_map_path)
+    date_nav = build_date_nav(date_str, available_report_dates(data_dir))
+    report_shared.write_html(
         html_path,
         date_str=date_str,
         session=session,
@@ -338,7 +331,7 @@ def main(argv=None):
           f"/ 보합 {overall['flat']:,}({overall['flat_pct']}%)")
     print(f"✔ CSV : {csv_path}")
     print(f"✔ THEME: {theme_map_path}")
-    print(f"✔ HTML({args.mode}): {html_path}")
+    print(f"✔ HTML: {html_path}")
     print(f"⏱ {elapsed:.1f}초")
 
 

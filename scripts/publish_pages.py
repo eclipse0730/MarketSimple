@@ -23,8 +23,8 @@ from urllib.parse import unquote, urlparse
 ROOT = Path(__file__).resolve().parents[1]
 DOCS = ROOT / "docs"
 
-REPORT_RE = re.compile(r"\[(\d{8})\]_mode1\.html$")
-# 리포트 내 날짜 이동 버튼: href="<url인코딩된 …[YYYYMMDD]_mode1.html>"
+REPORT_RE = re.compile(r"\[(\d{8})\]\.html$")
+# 리포트 내 날짜 이동 버튼: href="<url인코딩된 …[YYYYMMDD].html>"
 NAV_HREF_RE = re.compile(r'(class="date-nav-btn (?:prev|next)" href=")([^"]+)(")')
 
 # 게시할 시장 목록 — 시장 추가/제거는 여기 한 줄. landing=True 인 시장이 루트(/) 기본.
@@ -58,7 +58,7 @@ def _report_dates(market: str) -> list[str]:
     if not report_dir.exists():
         return []
     dates = []
-    for p in report_dir.glob("*_mode1.html"):
+    for p in report_dir.glob("*].html"):   # 옛 *_mode1.html 잔존물은 REPORT_RE 가 걸러냄
         m = REPORT_RE.search(p.name)
         if m:
             dates.append(m.group(1))
@@ -69,7 +69,7 @@ def _rewrite_nav_links(html: str) -> str:
     """날짜 이동 링크(로컬 파일명) → 배포 경로(../YYYYMMDD/)로 치환."""
     def repl(m):
         target = unquote(m.group(2))
-        dm = re.search(r"\[(\d{8})\]_mode1\.html$", target)
+        dm = re.search(r"\[(\d{8})\]\.html$", target)
         if not dm:
             return m.group(0)
         return f"{m.group(1)}../{dm.group(1)}/{m.group(3)}"
@@ -81,56 +81,68 @@ def _write_text(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8")
 
 
-# 배포된 날짜 페이지의 prev/next 링크 (이미 ../YYYYMMDD/ 경로 형태)
-NAV_LINK_RE = re.compile(
-    r'(<a class="date-nav-btn (prev|next)" href=")\.\./(\d{8})/'
-    r'("\s+aria-label="[^"]*"\s+title="[^"]*\()(\d{4}\.\d{2}\.\d{2})(\)")'
-)
+# date-nav 전체 블록(<nav class="date-nav">…</nav>). 페이지마다 하나뿐이다.
+NAV_BLOCK_RE = re.compile(r'<nav class="date-nav"[\s\S]*?</nav>')
+# 리포트와 동일한 화살표 SVG (report_shared.ARROWS 와 일치시켜야 모양이 같다)
+NAV_ARROWS = {
+    "prev": '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>',
+    "next": '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>',
+}
 
 
-def _heal_nav_links(market_root: Path) -> int:
-    """배포된 모든 날짜 페이지의 date-nav 링크를 실제 존재하는 날짜로 교정한다.
+def _date_label(date_str: str) -> str:
+    return f"{date_str[:4]}.{date_str[4:6]}.{date_str[6:]}"
 
-    휴장일 데이터 제거 등으로 이웃 날짜 폴더가 사라지면, 장중(intraday) 모드에서
-    재생성되지 않은 옆 날짜 페이지의 prev/next 링크가 404가 된다. publish 마다
-    전체 페이지를 훑어, 끊긴 링크를 같은 방향의 가장 가까운 실재 날짜로 재지정한다.
+
+def _nav_btn(neighbor: str | None, kind: str, title: str) -> str:
+    if neighbor:
+        return (f'<a class="date-nav-btn {kind}" href="../{neighbor}/" '
+                f'aria-label="{title}" title="{title} ({_date_label(neighbor)})">'
+                f'{NAV_ARROWS[kind]}</a>')
+    return (f'<span class="date-nav-btn {kind} is-disabled" aria-hidden="true">'
+            f'{NAV_ARROWS[kind]}</span>')
+
+
+def _nav_block(cur: str, prev: str | None, nxt: str | None) -> str:
+    return (
+        '<nav class="date-nav" aria-label="날짜 이동">'
+        f'{_nav_btn(prev, "prev", "이전 거래일")}'
+        f'<span class="date-nav-cur mono">{_date_label(cur)}</span>'
+        f'{_nav_btn(nxt, "next", "다음 거래일")}'
+        '</nav>'
+    )
+
+
+def _rebuild_nav_links(market_root: Path) -> int:
+    """배포된 모든 날짜 페이지의 date-nav 를 실제 폴더 집합으로부터 통째로 재생성한다.
+
+    날짜 이동 링크는 리포트 빌드 시점에 구워지는데, 페이지는 '그 날이 최신'일 때만
+    빌드되므로 그 시점엔 next 가 비활성으로 굳는다. 다음 거래일이 생겨도 직전 페이지는
+    재빌드되지 않아 next 가 영구히 막힌다(돌아갈 수 없음). publish 는 매번 전체 날짜
+    폴더를 알고 있으니, 여기서 각 페이지의 prev/next 를 이웃 날짜로 다시 써서
+    활성/비활성·끊긴 링크를 한 번에 바로잡는다.
     """
     if not market_root.is_dir():
         return 0
     dates = sorted(d.name for d in market_root.iterdir()
                    if d.is_dir() and d.name.isdigit() and len(d.name) == 8)
-    dateset = set(dates)
-    if not dateset:
+    if not dates:
         return 0
 
     fixed = 0
-    for cur in dates:
+    for i, cur in enumerate(dates):
         idx_file = market_root / cur / "index.html"
         if not idx_file.exists():
             continue
         html = idx_file.read_text(encoding="utf-8")
-
-        def repl(m):
-            nonlocal fixed
-            kind, target = m.group(2), m.group(3)
-            if target in dateset:
-                return m.group(0)
-            # 같은 방향의 가장 가까운 실재 날짜(없으면 현재 날짜 = 자기링크로 404만 회피)
-            if kind == "next":
-                cands = [d for d in dates if d > cur]
-                new = min(cands) if cands else cur
-            else:
-                cands = [d for d in dates if d < cur]
-                new = max(cands) if cands else cur
-            fixed += 1
-            label = f"{new[:4]}.{new[4:6]}.{new[6:]}"
-            return f"{m.group(1)}../{new}/{m.group(4)}{label}{m.group(6)}"
-
-        new_html = NAV_LINK_RE.sub(repl, html)
-        if new_html != html:
+        prev = dates[i - 1] if i > 0 else None
+        nxt = dates[i + 1] if i < len(dates) - 1 else None
+        new_html, n = NAV_BLOCK_RE.subn(lambda _m: _nav_block(cur, prev, nxt), html, count=1)
+        if n and new_html != html:
             idx_file.write_text(new_html, encoding="utf-8")
+            fixed += 1
     if fixed:
-        print(f"  · {market_root.name}: 끊긴 날짜 링크 {fixed}건 교정")
+        print(f"  · {market_root.name}: 날짜 네비 {fixed}건 갱신")
     return fixed
 
 
@@ -197,7 +209,7 @@ def publish_market(market: str, title: str, only_latest: bool = False,
 
     report_dir = ROOT / "output" / market / "report"
     for date_str in dates:
-        src = report_dir / f"{_prefix(market)} [{date_str}]_mode1.html"
+        src = report_dir / f"{_prefix(market)} [{date_str}].html"
         if not src.exists():
             continue
         day_dir = out_root / date_str
@@ -317,8 +329,9 @@ def main(argv=None) -> None:
     ready = {}
     for m in MARKETS:
         ready[m["key"]] = publish_market(m["key"], m["title"], only_latest, skip_thumb)
-        # 배포 후 끊긴 날짜 링크 교정(휴장일 제거 등으로 생긴 404 방지)
-        _heal_nav_links(DOCS / m["key"])
+        # 배포 후 전체 페이지의 date-nav 를 실제 날짜 집합으로 재생성
+        # (장중 모드에서 직전 날짜의 next 가 막히는 문제 + 끊긴 링크 동시 교정)
+        _rebuild_nav_links(DOCS / m["key"])
 
     # 루트(/) 진입 시 landing 시장 최신 리포트로 이동. 없으면 선택 메뉴 폴백.
     landing = next((m["key"] for m in MARKETS if m.get("landing")), None)

@@ -12,9 +12,9 @@
       "autoOpen": true,
       "ariaButton": "공지 보기",
       "title": "안녕하세요!",
-      "defaultMessage": "만나서 반가워요. 마켓은 장 중 30분 단위로 업데이트됩니다!",
+      "defaultMessage": "이번주 장이 끝났어요! 좋은 주말 보내시고 다음주에 또 만나요!",
       "messages": [
-        "만나서 반가워요. 마켓 정보는 30분마다 업데이트 됩니다!",
+        "마켓 정보는 30분마다 업데이트 됩니다!",
         "오늘은 거래대금부터 살펴볼까요? 📊",
         "거래량 급증 종목은 과열도 함께 확인해요 🔥",
         "왼쪽 위 화살표로 다른 날짜도 볼 수 있어요 📅",
@@ -37,6 +37,26 @@
       "formTitle": "개선·요청사항을 자유롭게 남겨주세요!",
       "subject": "[MarketBrief] 피드백",
       "fromName": "MarketBrief 방문자"
+    },
+    {
+      "id": "chameleon",
+      "type": "theme",
+      "position": "right",
+      "image": "/images/chameleon_clear.png",
+      "size": 92,
+      "sizeMobile": 72,
+      "offset": { "x": 16, "y": 150 },
+      "active": true,
+      "autoOpen": false,
+      "ariaButton": "화면 테마 변경",
+      "title": "테마 변경 🎨",
+      "placeholder": "테마\n변경",
+      "themes": [
+        { "id": "mode1", "label": "파스텔" },
+        { "id": "mode2", "label": "다크" },
+        { "id": "mode3", "label": "전문가" },
+        { "id": "mode4", "label": "세피아" }
+      ]
     }
   ]
 }
