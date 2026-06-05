@@ -375,7 +375,19 @@
     });
   }
 
+  // 마스코트 스타일(mascots.css)을 런타임에 주입 — 리포트 페이지엔 마스코트 CSS 를
+  // 두지 않는다(report_shared 축소). 색/폰트는 페이지의 CSS 변수를 그대로 쓴다.
+  function injectStyles() {
+    if (document.getElementById("mb-mascot-css")) return;
+    var link = document.createElement("link");
+    link.id = "mb-mascot-css";
+    link.rel = "stylesheet";
+    link.href = asset("/mascot/mascots.css");
+    (document.head || document.documentElement).appendChild(link);
+  }
+
   function init() {
+    injectStyles();
     fetch(asset(CFG.url || "/characters.json"), { cache: "no-store" })
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (d) { if (d) start(d); })
