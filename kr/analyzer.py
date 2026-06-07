@@ -13,11 +13,18 @@ from . import config
 FUND_PREFIXES = (
     "KODEX", "TIGER", "ACE", "RISE", "SOL", "PLUS", "HANARO", "KOSEF",
     "TIMEFOLIO", "ARIRANG", "KBSTAR", "KINDEX", "TREX", "FOCUS", "UNICORN",
-    "마이티", "히어로즈",
+    # 추가 ETF/액티브 운용사 브랜드 (KIWOOM 미국S&P500 등 보통주 오분류 방지)
+    # 끝에 공백을 둔 prefix("BNK ", "키움 ")는 동명 보통주(BNK금융지주·키움증권)를
+    # 살리고 "브랜드 + 상품명"(BNK 온디바이스AI…)만 걸러내기 위함이다.
+    "KIWOOM ", "KOACT", "TIME ", "1Q ", "WON ", "HK ", "IBK ", "BNK ", "MIDAS ",
+    "TRUSTON ", "VITA ", "N2 ", "DAISHIN",
+    "마이티", "히어로즈", "키움 ", "더제이", "에셋플러스", "파워 ",
 )
 NON_COMMON_KEYWORDS = (
     "ETN", "스팩", "SPAC", "리츠", "인프라", "선박투자", "부동산투자",
 )
+# 종목명이 이 접미사로 끝나면 ETF/펀드로 본다(새 브랜드가 생겨도 잡히는 안전망).
+FUND_SUFFIXES = ("액티브",)
 
 
 def _tier_of(rate: float):
@@ -38,9 +45,11 @@ def _is_common_stock_name(name: str) -> bool:
     text = str(name).strip()
     upper = text.upper()
 
-    if any(upper.startswith(prefix) for prefix in FUND_PREFIXES):
+    if any(upper.startswith(prefix.upper()) for prefix in FUND_PREFIXES):
         return False
     if any(keyword in upper for keyword in NON_COMMON_KEYWORDS):
+        return False
+    if text.endswith(FUND_SUFFIXES):
         return False
     if "우선주" in text:
         return False
