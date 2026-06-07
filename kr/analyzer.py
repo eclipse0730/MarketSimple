@@ -78,16 +78,44 @@ def _counts(sub):
     }
 
 
-def market_strength(df):
-    """전체 시장 강도와 시장별 강도를 반환."""
+def market_strength(df, prev_df=None):
+    """전체 시장 강도와 시장별 강도를 반환. prev_df 가 있으면 상승/하락 수 전일 대비(delta)를 붙인다."""
     summary_df = _summary_universe(df)
-    overall = _counts(summary_df)
-    by_market = {m: _counts(summary_df[summary_df["시장"] == m]) for m in config.MARKETS}
+    prev_summary = _summary_universe(prev_df) if prev_df is not None else None
+
+    def counts_with_delta(sub, prev_sub):
+        c = _counts(sub)
+        if prev_sub is not None and len(prev_sub):
+            p = _counts(prev_sub)
+            c["up_delta"] = c["up"] - p["up"]
+            c["down_delta"] = c["down"] - p["down"]
+        return c
+
+    overall = counts_with_delta(
+        summary_df,
+        prev_summary,
+    )
+    by_market = {}
+    for m in config.MARKETS:
+        prev_sub = prev_summary[prev_summary["시장"] == m] if prev_summary is not None else None
+        by_market[m] = counts_with_delta(summary_df[summary_df["시장"] == m], prev_sub)
     return overall, by_market
 
 
-def _diagnose_one(sub):
-    """한 시장(또는 부분집합)의 진단 지표를 계산한다. 입력은 보통주만 걸러진 DataFrame."""
+def _turnover(sub):
+    """거래대금 합계 / 시가총액 합계 × 100 (%). 계산 불가면 None."""
+    if "거래대금" not in sub.columns or "시가총액" not in sub.columns or not len(sub):
+        return None
+    cap_total = pd.to_numeric(sub["시가총액"], errors="coerce").sum()
+    val_total = pd.to_numeric(sub["거래대금"], errors="coerce").sum()
+    if cap_total and cap_total > 0:
+        return round(float(val_total / cap_total) * 100, 2)
+    return None
+
+
+def _diagnose_one(sub, prev_sub=None):
+    """한 시장(또는 부분집합)의 진단 지표를 계산한다. 입력은 보통주만 걸러진 DataFrame.
+    prev_sub 가 있으면 회전율 전일 대비(turnover_delta)를 붙인다."""
     out = {"caps": [], "limit_up": None, "limit_down": None, "turnover": None}
 
     if "시가총액" in sub.columns and len(sub):
@@ -112,25 +140,30 @@ def _diagnose_one(sub):
         out["limit_up"] = int((sub["등락률"] >= config.LIMIT_UP_RATE).sum())
         out["limit_down"] = int((sub["등락률"] <= config.LIMIT_DOWN_RATE).sum())
 
-    if "거래대금" in sub.columns and "시가총액" in sub.columns and len(sub):
-        cap_total = pd.to_numeric(sub["시가총액"], errors="coerce").sum()
-        val_total = pd.to_numeric(sub["거래대금"], errors="coerce").sum()
-        if cap_total and cap_total > 0:
-            out["turnover"] = round(float(val_total / cap_total) * 100, 2)
+    out["turnover"] = _turnover(sub)
+    if prev_sub is not None and out["turnover"] is not None:
+        prev_to = _turnover(prev_sub)
+        if prev_to is not None:
+            out["turnover_delta"] = round(out["turnover"] - prev_to, 2)
 
     return out
 
 
-def market_diagnosis(df):
+def market_diagnosis(df, prev_df=None):
     """시장별(코스피/코스닥) 진단: 시총 구간별 강도 + 상한가/하한가 + 거래대금 회전율.
 
     - 시총 구간(대형/중형/소형)별 종목 수·평균 등락률 → '오늘 누가 끌고 갔나'.
     - 상한가/하한가 근접 종목 수 → 과열/패닉 신호.
-    - 회전율 = 거래대금 / 시가총액 → 시장의 손바뀜 정도.
+    - 회전율 = 거래대금 / 시가총액 → 시장의 손바뀜 정도(prev_df 있으면 전일 대비도).
     보통주 기준(ETF/우선주 등 제외). config.MARKETS 별로 나눠서 반환한다.
     """
     base = _summary_universe(df)
-    return {m: _diagnose_one(base[base["시장"] == m]) for m in config.MARKETS}
+    prev_base = _summary_universe(prev_df) if prev_df is not None else None
+    result = {}
+    for m in config.MARKETS:
+        prev_sub = prev_base[prev_base["시장"] == m] if prev_base is not None else None
+        result[m] = _diagnose_one(base[base["시장"] == m], prev_sub)
+    return result
 
 
 def build_tiers(df, common_only=False):

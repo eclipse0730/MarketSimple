@@ -273,16 +273,19 @@ def main(argv=None):
         return
 
     # 2) 분석
-    overall, by_market = analyzer.market_strength(df)
+    # 과거 프레임(최신순). prev_frames[0] = 전일 → 시장 강도·진단의 전일 대비에 사용.
+    prev_frames = load_prev_market_frames(data_dir, date_str, config.VOLUME_SURGE_AVG_DAYS)
+    prev_df = prev_frames[0] if prev_frames else None
+
+    overall, by_market = analyzer.market_strength(df, prev_df)
     by_market = attach_market_indices(by_market, data_collector, date_str, bool(args.date))
     by_market = attach_market_flows(by_market, data_collector, date_str, bool(args.date))
-    diagnosis = analyzer.market_diagnosis(df)
+    diagnosis = analyzer.market_diagnosis(df, prev_df)
     tiers = analyzer.build_tiers(df)
     tiers_common = analyzer.build_tiers(df, common_only=True)
     top_value = analyzer.top_trading_value(df, n=30)
     top_value_common = analyzer.top_trading_value(df, n=30, common_only=True)
 
-    prev_frames = load_prev_market_frames(data_dir, date_str, config.VOLUME_SURGE_AVG_DAYS)
     if len(prev_frames) >= config.VOLUME_SURGE_MIN_DAYS:
         top_volume = analyzer.volume_surge_top(df, prev_frames)
         top_volume_common = analyzer.volume_surge_top(df, prev_frames, common_only=True)

@@ -139,11 +139,13 @@ def _section_icon(name, label):
 # sections
 # ──────────────────────────────────────────────
 def _metric_cards(c):
-    """시장별 상승/보합/하락 카드."""
+    """시장별 상승/보합/하락 카드. 상승/하락은 전일 대비(▲▼)를 라벨 옆에 표시."""
+    up_delta = _delta(c.get("up_delta"))
+    down_delta = _delta(c.get("down_delta"))
     return f"""
           <div class="metrics mkt-metrics">
             <div class="metric up-card">
-              <div class="m-label up">상승</div>
+              <div class="m-label up">상승 {up_delta}</div>
               <div class="m-value mono up">{c['up']:,}<span class="m-pct">{c['up_pct']}%</span></div>
             </div>
             <div class="metric flat-card">
@@ -151,7 +153,7 @@ def _metric_cards(c):
               <div class="m-value mono flat">{c['flat']:,}<span class="m-pct">{c['flat_pct']}%</span></div>
             </div>
             <div class="metric down-card">
-              <div class="m-label down">하락</div>
+              <div class="m-label down">하락 {down_delta}</div>
               <div class="m-value mono down">{c['down']:,}<span class="m-pct">{c['down_pct']}%</span></div>
             </div>
           </div>"""
@@ -187,6 +189,23 @@ def _section_market(by_market):
     </section>"""
 
 
+def _delta(value, *, unit="", digits=0):
+    """전일 대비 변화량을 ▲/▼ 칩으로. 증가=▲, 감소=▼, 0=– (중립 회색).
+    숫자 부호만 표시하므로 의미(좋다/나쁘다)는 맥락에 맡긴다."""
+    if value is None:
+        return ""
+    v = round(float(value), digits) if digits else int(value)
+    if v > 0:
+        arrow, cls, num = "▲", "delta-up", v
+    elif v < 0:
+        arrow, cls, num = "▼", "delta-down", -v
+    else:
+        arrow, cls, num = "–", "delta-flat", 0
+    fmt = f"{num:,.{digits}f}" if digits else f"{num:,}"
+    text = arrow if v == 0 else f"{arrow}{fmt}{unit}"
+    return f'<span class="dg-delta {cls}">{text}</span>'
+
+
 def _info(text):
     """ⓘ 아이콘 + 툴팁. 데스크톱은 hover, 모바일은 탭(focus)으로 뜬다.
     tabindex 로 모바일에서도 focus 가능, role=button + aria-label 로 접근성 확보."""
@@ -216,8 +235,9 @@ def _diagnosis_block(market, d):
                      f'<b class="mono down">{d["limit_down"]}</b></span>')
     if d.get("turnover") is not None:
         tip = "거래대금 ÷ 시가총액. 그날 시총의 몇 %가 거래됐는지 — 높을수록 거래가 활발(과열·패닉), 낮을수록 한산(관망)."
+        delta = _delta(d.get("turnover_delta"), unit="%p", digits=2)
         chips.append(f'<span class="dg-chip"><span>회전율 {_info(tip)}</span>'
-                     f'<b class="mono">{d["turnover"]}%</b></span>')
+                     f'<b class="mono">{d["turnover"]}%</b>{delta}</span>')
     signal_row = f'<div class="dg-signals">{"".join(chips)}</div>' if chips else ""
 
     return f"""
@@ -824,6 +844,14 @@ _PAGE = """<!doctype html>
              border:5px solid transparent; border-top-color:var(--heading); }}
   .dg-info:hover .dg-tip, .dg-info:focus .dg-tip {{
              opacity:1; visibility:visible; transform:translateX(-50%) translateY(0); }}
+  /* 전일 대비 ▲▼ — 부호 기준 색(증가=상승색, 감소=하락색, 0=중립). 숫자 크기는 작게. */
+  .dg-delta {{ font-family:var(--round); font-size:10.5px; font-weight:800; margin-left:5px;
+              letter-spacing:0; white-space:nowrap; }}
+  .dg-delta.delta-up {{ color:var(--up); }}
+  .dg-delta.delta-down {{ color:var(--down); }}
+  .dg-delta.delta-flat {{ color:var(--faint); }}
+  /* 상승/하락 카드 라벨 옆 delta 는 라벨 톤에 맞춰 조금 더 작게 */
+  .m-label .dg-delta {{ font-size:9.5px; margin-left:4px; }}
 
   .mkt-grid {{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }}
   /* 시장 카드 안 상승/보합/하락 카드 (지수 밑, 컴팩트) */
