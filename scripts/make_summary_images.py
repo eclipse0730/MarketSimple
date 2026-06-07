@@ -31,6 +31,7 @@ import re
 import subprocess
 import sys
 import tempfile
+from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -58,7 +59,7 @@ CARDS = [
 # 리포트 테마(<html data-theme>) — characters.json/report.css 와 동일한 mode 키.
 THEMES = ["mode1", "mode2", "mode3", "mode4"]
 
-FOOT_TEXT = "더 많은 정보는 marketbrief.kr"
+FOOT_TEXT = "marketbrief.kr"
 
 
 def _find_chrome() -> str | None:
@@ -83,7 +84,7 @@ def _date_of(path: Path) -> str:
     return m.group(1) if m else ""
 
 
-def _card_inject(show_ids: list[str], date_label: str, mascot_uri: str) -> tuple[str, str]:
+def _card_inject(show_ids: list[str], head_title: str, mascot_uri: str) -> tuple[str, str]:
     """대상 섹션만 보이게 하는 <style> 와 카드 헤더/푸터를 붙이는 <script> 를 만든다."""
     show_sel = ", ".join(f"#{i}" for i in show_ids)
     style = f"""
@@ -97,21 +98,22 @@ def _card_inject(show_ids: list[str], date_label: str, mascot_uri: str) -> tuple
   {show_sel} {{ display:block !important; }}
   .reveal {{ opacity:1 !important; transform:none !important; animation:none !important; }}
   /* 토글(보통주/전종목)은 기본=보통주 노출이 맞으므로 그대로 둔다 */
-  #card-head {{ display:flex; align-items:center; justify-content:space-between;
-               gap:14px; margin-bottom:20px; font-family:var(--round,sans-serif); }}
-  #card-head .ch-brand {{ font-weight:800; font-size:21px; color:var(--heading); letter-spacing:-.01em; }}
-  #card-head .ch-date {{ font-size:14.5px; font-weight:700; color:var(--sub); }}
-  #card-foot {{ display:flex; align-items:center; justify-content:flex-end; gap:14px;
-               margin-top:20px; }}
-  #card-foot img {{ width:88px; height:auto; display:block;
+  /* 헤더 3열: 좌(마스코트+말풍선) | 중앙(제목) | 우(균형용 빈칸).
+     좌/우 칼럼 폭을 같게 둬야 제목이 카드 정중앙에 온다. */
+  #card-head {{ display:grid; grid-template-columns:1fr auto 1fr; align-items:center;
+               margin-bottom:22px; font-family:var(--round,sans-serif); }}
+  #card-head .ch-brandwrap {{ display:flex; align-items:center; gap:12px; justify-self:start; }}
+  #card-head .ch-brandwrap img {{ width:76px; height:auto; display:block;
                    filter:drop-shadow(0 6px 12px rgba(216,138,168,.4)); }}
-  #card-foot .cf-bubble {{ position:relative; background:var(--panel); border:1px solid var(--line);
-      border-radius:14px; padding:11px 18px; font-family:var(--round,sans-serif);
-      font-weight:800; font-size:18px; color:var(--accent); letter-spacing:.01em;
-      box-shadow:0 8px 24px rgba(0,0,0,.10); }}
-  #card-foot .cf-bubble::after {{ content:""; position:absolute; right:-7px; top:50%;
+  #card-head .cf-bubble {{ position:relative; background:var(--panel); border:1px solid var(--line);
+      border-radius:14px; padding:10px 16px; font-family:var(--round,sans-serif);
+      font-weight:800; font-size:17px; color:var(--accent); letter-spacing:.01em;
+      box-shadow:0 8px 24px rgba(0,0,0,.10); white-space:nowrap; }}
+  #card-head .cf-bubble::after {{ content:""; position:absolute; left:-7px; top:50%;
       transform:translateY(-50%) rotate(45deg); width:12px; height:12px; background:var(--panel);
-      border-right:1px solid var(--line); border-top:1px solid var(--line); }}
+      border-left:1px solid var(--line); border-bottom:1px solid var(--line); }}
+  #card-head .ch-title {{ font-weight:800; font-size:23px; color:var(--heading);
+               letter-spacing:-.01em; text-align:center; white-space:nowrap; }}
 </style>
 """
     script = f"""
@@ -120,13 +122,13 @@ def _card_inject(show_ids: list[str], date_label: str, mascot_uri: str) -> tuple
   function go(){{
     var wrap = document.querySelector('.wrap'); if(!wrap) return;
     var head = document.createElement('div'); head.id='card-head';
-    head.innerHTML = '<span class="ch-brand">\\uD83D\\uDCCA Market Brief</span>'
-                   + '<span class="ch-date">{date_label} · KOSPI·KOSDAQ</span>';
+    head.innerHTML = '<span class="ch-brandwrap">'
+                   +   '<img src="{mascot_uri}" alt="mascot">'
+                   +   '<span class="cf-bubble">{FOOT_TEXT}</span>'
+                   + '</span>'
+                   + '<span class="ch-title">{head_title}</span>'
+                   + '<span></span>';
     wrap.insertBefore(head, wrap.firstChild);
-    var foot = document.createElement('div'); foot.id='card-foot';
-    foot.innerHTML = '<span class="cf-bubble">{FOOT_TEXT}</span>'
-                   + '<img src="{mascot_uri}" alt="mascot">';
-    wrap.appendChild(foot);
   }}
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', go); else go();
 }})();
@@ -211,6 +213,10 @@ def main(argv=None) -> None:
         raise SystemExit("빌드된 리포트를 찾지 못했습니다. 먼저 리포트를 생성하세요.")
     date_str = _date_of(report)
     date_label = f"{date_str[:4]}.{date_str[4:6]}.{date_str[6:]}"
+    # 세션은 실행 시각(KST)으로 판단: 14시 이전=오전장, 이후=장마감.
+    # (워크플로에 TZ=Asia/Seoul 이 설정돼 러너 로컬시각이 KST 다)
+    session_label = "오전장 요약" if datetime.now().hour < 14 else "장마감 요약"
+    head_title = f"{date_label} {session_label}"
     mascot_uris = {
         c[3]: (ROOT / "images" / c[3]).resolve().as_uri() for c in CARDS
     }
@@ -226,7 +232,7 @@ def main(argv=None) -> None:
         out_dir = base_dir / theme
         out_dir.mkdir(parents=True, exist_ok=True)
         for name, ids, sub, mascot in CARDS:
-            style, script = _card_inject(ids, date_label, mascot_uris[mascot])
+            style, script = _card_inject(ids, head_title, mascot_uris[mascot])
             card_html = _build_card_html(themed_html, style, script)
             with tempfile.NamedTemporaryFile("w", suffix=".html", delete=False, encoding="utf-8") as tf:
                 tf.write(card_html)

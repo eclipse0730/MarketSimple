@@ -1,10 +1,11 @@
 name: summary-telegram
 
 # 요약 이미지(테마 4종 × 3장)를 만들어 테마별 앨범으로 텔레그램에 발송.
-# 점심·장마감 하루 2회. GitHub Actions cron 은 UTC → KST 12:33/15:33 == UTC 03:33/06:33.
+# 오전장·장마감 하루 2회. GitHub Actions cron 은 UTC → KST 11:58/15:33 == UTC 02:58/06:33.
+# 상단 문구의 오전장/장마감 구분은 make_summary_images 가 실행 시각(KST 14시)으로 자동 판단.
 on:
   schedule:
-    - cron: "33 3 * * 1-5"   # 월~금 UTC 03:33 == KST 12:33 (점심)
+    - cron: "58 2 * * 1-5"   # 월~금 UTC 02:58 == KST 11:58 (오전장)
     - cron: "33 6 * * 1-5"   # 월~금 UTC 06:33 == KST 15:33 (장마감)
   workflow_dispatch:          # 수동 실행도 허용
 
