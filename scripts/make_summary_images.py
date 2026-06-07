@@ -5,15 +5,21 @@
   python -m scripts.make_summary_images 20260605   # 특정 날짜
   python -m scripts.make_summary_images --out docs/kr/20260605  # 출력 폴더 지정
 
+  python -m scripts.make_summary_images --theme mode2     # 특정 테마만
+
 카드 구성(폭 1080px):
-  summary-1 : 시장 요약 + 거래대금 Top30 + 거래량 급증 Top30
-  summary-2 : 종목 Tier
-  summary-3 : 섹터 Tier
+  summary-1 : 시장 요약 + 시장 진단 + 거래대금 Top30 + 거래량 급증 Top30  (마스코트: bear)
+  summary-2 : 종목 상승률 Tier                                          (마스코트: pengu)
+  summary-3 : 섹터 상승률 Tier                                          (마스코트: shiba)
+
+테마: 리포트의 data-theme(mode1 파스텔 / mode2 다크 / mode3 전문가 / mode4 세피아)을
+  주입해 테마별로 한 세트씩 만든다. 기본은 4테마 전부 생성(--theme 로 1개만 가능).
+  출력은 <out>/<테마> 폴더로 분리한다.
 
 동작: 빌드된 리포트 HTML(output/kr/report/…[날짜].html)에 스타일/스크립트를 주입해
   대상 섹션만 남기고, 헤드리스 Chrome 으로 전체를 캡처한 뒤 배경 여백을 잘라 1080px
-  폭으로 저장한다. 하단 여백에 bear 마스코트 + "marketbrief.kr" 말풍선을 넣는다.
-  리포트 섹션의 실제 스타일을 그대로 재사용하므로 별도 CSS 중복이 없다.
+  폭으로 저장한다. 하단 여백에 카드별 마스코트 + "더 많은 정보는 marketbrief.kr"
+  말풍선을 넣는다. 리포트 섹션의 실제 스타일을 그대로 재사용하므로 CSS 중복이 없다.
 """
 
 from __future__ import annotations
@@ -31,7 +37,6 @@ ROOT = Path(__file__).resolve().parents[1]
 SCALE = 2          # device-scale-factor (선명도)
 WIDTH = 1080       # 결과 이미지 폭(px)
 CAP_H = 5200       # 캡처 윈도우 높이(px) — 가장 긴 카드도 담기게 넉넉히
-BG = (238, 241, 244)   # 카드 바깥 여백색(트리밍 기준). CSS 와 일치시켜야 함
 
 CHROME_CANDIDATES = [
     os.environ.get("CHROME_PATH", ""),
@@ -42,12 +47,18 @@ CHROME_CANDIDATES = [
     r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
 ]
 
-# (출력파일명, 남길 섹션 id 들, 카드 부제)
+# (출력파일명, 남길 섹션 id 들, 카드 부제, 마스코트 이미지파일)
 CARDS = [
-    ("summary-1", ["sec-market", "sec-diagnosis", "sec-money", "sec-volume"], "시장 요약 · 거래대금/거래량 Top30"),
-    ("summary-2", ["sec-tiers"], "종목 Tier"),
-    ("summary-3", ["sec-sector"], "섹터 Tier"),
+    ("summary-1", ["sec-market", "sec-diagnosis", "sec-money", "sec-volume"],
+     "시장 요약 · 거래대금/거래량 Top30", "bear_clear.png"),
+    ("summary-2", ["sec-tiers"], "종목 상승률 Tier", "pengu2_clear.png"),
+    ("summary-3", ["sec-sector"], "섹터 상승률 Tier", "siba_01_clear.png"),
 ]
+
+# 리포트 테마(<html data-theme>) — characters.json/report.css 와 동일한 mode 키.
+THEMES = ["mode1", "mode2", "mode3", "mode4"]
+
+FOOT_TEXT = "더 많은 정보는 marketbrief.kr"
 
 
 def _find_chrome() -> str | None:
@@ -72,13 +83,14 @@ def _date_of(path: Path) -> str:
     return m.group(1) if m else ""
 
 
-def _card_inject(show_ids: list[str], date_label: str, bear_uri: str) -> tuple[str, str]:
+def _card_inject(show_ids: list[str], date_label: str, mascot_uri: str) -> tuple[str, str]:
     """대상 섹션만 보이게 하는 <style> 와 카드 헤더/푸터를 붙이는 <script> 를 만든다."""
     show_sel = ", ".join(f"#{i}" for i in show_ids)
     style = f"""
 <style id="card-style">
-  html, body {{ background:#eef1f4 !important; }}
-  body {{ background-image:none !important; }}
+  /* 그라데이션(--body-bg)을 끄고 테마의 단색 --bg 로 채운다(다크 포함).
+     모서리색이 균일해야 _trim_and_resize 가 콘텐츠 경계를 정확히 잡는다. */
+  html, body {{ background:var(--bg, #eef1f4) !important; background-image:none !important; }}
   .wrap {{ max-width:{WIDTH}px !important; padding:30px 30px 20px !important; }}
   header, footer, .date-nav, .mascot-wrap {{ display:none !important; }}
   section {{ display:none !important; }}
@@ -112,8 +124,8 @@ def _card_inject(show_ids: list[str], date_label: str, bear_uri: str) -> tuple[s
                    + '<span class="ch-date">{date_label} · KOSPI·KOSDAQ</span>';
     wrap.insertBefore(head, wrap.firstChild);
     var foot = document.createElement('div'); foot.id='card-foot';
-    foot.innerHTML = '<span class="cf-bubble">marketbrief.kr</span>'
-                   + '<img src="{bear_uri}" alt="bear">';
+    foot.innerHTML = '<span class="cf-bubble">{FOOT_TEXT}</span>'
+                   + '<img src="{mascot_uri}" alt="mascot">';
     wrap.appendChild(foot);
   }}
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', go); else go();
@@ -121,6 +133,12 @@ def _card_inject(show_ids: list[str], date_label: str, bear_uri: str) -> tuple[s
 </script>
 """
     return style, script
+
+
+def _apply_theme(report_html: str, theme: str) -> str:
+    """<html ... data-theme="modeN"> 의 테마를 교체한다."""
+    return re.sub(r'(<html[^>]*\bdata-theme=")[^"]*(")',
+                  lambda m: m.group(1) + theme + m.group(2), report_html, count=1)
 
 
 def _build_card_html(report_html: str, style: str, script: str) -> str:
@@ -144,16 +162,19 @@ def _capture(chrome: str, html_path: Path, out_png: Path) -> bool:
 
 
 def _trim_and_resize(png: Path) -> None:
-    """아래쪽 배경 여백을 잘라내고 폭 1080px 로 리사이즈."""
+    """아래쪽 배경 여백을 잘라내고 폭 1080px 로 리사이즈.
+
+    배경색은 좌상단 모서리 픽셀에서 읽는다(테마마다 배경이 달라 고정값을 쓸 수 없다)."""
     from PIL import Image
     im = Image.open(png).convert("RGB")
     w, h = im.size
     px = im.load()
+    bg = px[2, 2]   # 모서리 = 카드 바깥 여백색
 
     def row_has_content(y: int) -> bool:
         for x in range(0, w, 9):
             r, g, b = px[x, y]
-            if abs(r - BG[0]) + abs(g - BG[1]) + abs(b - BG[2]) > 26:
+            if abs(r - bg[0]) + abs(g - bg[1]) + abs(b - bg[2]) > 26:
                 return True
         return False
 
@@ -174,9 +195,11 @@ def main(argv=None) -> None:
         sys.stdout.reconfigure(encoding="utf-8")
     except (AttributeError, ValueError):
         pass
-    ap = argparse.ArgumentParser(description="카톡 요약 이미지 3장 생성")
+    ap = argparse.ArgumentParser(description="카톡 요약 이미지 생성 (테마별 3장씩)")
     ap.add_argument("date", nargs="?", help="기준일 YYYYMMDD (생략 시 최신 빌드)")
     ap.add_argument("--out", help="출력 폴더 (기본: output/kr/summary/<날짜>)")
+    ap.add_argument("--theme", choices=THEMES,
+                    help="특정 테마만 생성 (생략 시 4테마 전부)")
     args = ap.parse_args(argv)
 
     chrome = _find_chrome()
@@ -188,30 +211,36 @@ def main(argv=None) -> None:
         raise SystemExit("빌드된 리포트를 찾지 못했습니다. 먼저 리포트를 생성하세요.")
     date_str = _date_of(report)
     date_label = f"{date_str[:4]}.{date_str[4:6]}.{date_str[6:]}"
-    bear_uri = (ROOT / "images" / "bear_clear.png").resolve().as_uri()
+    mascot_uris = {
+        c[3]: (ROOT / "images" / c[3]).resolve().as_uri() for c in CARDS
+    }
 
-    out_dir = Path(args.out) if args.out else (ROOT / "output" / "kr" / "summary" / date_str)
-    out_dir.mkdir(parents=True, exist_ok=True)
-
+    base_dir = Path(args.out) if args.out else (ROOT / "output" / "kr" / "summary" / date_str)
+    themes = [args.theme] if args.theme else THEMES
     report_html = report.read_text(encoding="utf-8")
-    print(f"▶ 요약 이미지 생성  |  {date_str}  ←  {report.name}")
-    made = []
-    for name, ids, sub in CARDS:
-        style, script = _card_inject(ids, date_label, bear_uri)
-        card_html = _build_card_html(report_html, style, script)
-        with tempfile.NamedTemporaryFile("w", suffix=".html", delete=False, encoding="utf-8") as tf:
-            tf.write(card_html)
-            tmp = Path(tf.name)
-        out_png = out_dir / f"{name}.png"
-        try:
-            if _capture(chrome, tmp, out_png):
-                _trim_and_resize(out_png)
-                made.append(out_png)
-                print(f"  ✔ {out_png.relative_to(ROOT)}")
-        finally:
-            tmp.unlink(missing_ok=True)
+    print(f"▶ 요약 이미지 생성  |  {date_str}  ←  {report.name}  |  테마 {len(themes)}종")
 
-    print(f"완료: {len(made)}/3 장 → {out_dir.relative_to(ROOT)}")
+    made = 0
+    for theme in themes:
+        themed_html = _apply_theme(report_html, theme)
+        out_dir = base_dir / theme
+        out_dir.mkdir(parents=True, exist_ok=True)
+        for name, ids, sub, mascot in CARDS:
+            style, script = _card_inject(ids, date_label, mascot_uris[mascot])
+            card_html = _build_card_html(themed_html, style, script)
+            with tempfile.NamedTemporaryFile("w", suffix=".html", delete=False, encoding="utf-8") as tf:
+                tf.write(card_html)
+                tmp = Path(tf.name)
+            out_png = out_dir / f"{name}.png"
+            try:
+                if _capture(chrome, tmp, out_png):
+                    _trim_and_resize(out_png)
+                    made += 1
+                    print(f"  ✔ [{theme}] {out_png.relative_to(ROOT)}")
+            finally:
+                tmp.unlink(missing_ok=True)
+
+    print(f"완료: {made}/{len(themes) * len(CARDS)} 장 → {base_dir.relative_to(ROOT)}")
 
 
 if __name__ == "__main__":
