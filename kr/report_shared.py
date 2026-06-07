@@ -264,7 +264,7 @@ def _section_tiers(tiers, theme, tiers_common=None):
     return f"""
     <section class="reveal" id="sec-tiers">
       {toggle}
-      <div class="sec-head">{_section_icon("tier", "종목 Tier")}<h2>종목 Tier</h2>{switch}</div>
+      <div class="sec-head">{_section_icon("tier", "종목 상승률 Tier")}<h2>종목 상승률 Tier</h2>{switch}</div>
       {common_block}
       <div class="tiers tiers-all">{all_rows}</div>
     </section>"""
@@ -416,7 +416,7 @@ def _section_sector_tiers(sector_tiers, market_avg, theme):
     rows = _sector_tier_rows(sector_tiers, theme)
     return f"""
     <section class="reveal" id="sec-sector">
-      <div class="sec-head">{_section_icon("sector", "섹터 Tier")}<h2>섹터 Tier</h2>
+      <div class="sec-head">{_section_icon("sector", "섹터 상승률 Tier")}<h2>섹터 상승률 Tier</h2>
         <span class="sec-note">시장평균 {_fmt(market_avg)}% 기준 · 값은 초과수익(%p)</span></div>
       <div class="tiers">{rows}</div>
     </section>"""
@@ -539,9 +539,9 @@ def _og_tags_html(date_str, overall):
     title = f"{config.MARKET_NAME} 데일리 브리프 · {label}"
     if overall:
         desc = (f"상승 {overall.get('up', 0):,} · 하락 {overall.get('down', 0):,} · "
-                f"보합 {overall.get('flat', 0):,}  |  거래대금·거래량 Top30, 종목 Tier")
+                f"보합 {overall.get('flat', 0):,}  |  거래대금·거래량 Top30, 종목 상승률 Tier")
     else:
-        desc = f"{config.MARKET_SUBTITLE} 시장 분위기 요약 — 거래대금·거래량 Top30, 종목 Tier"
+        desc = f"{config.MARKET_SUBTITLE} 시장 분위기 요약 — 거래대금·거래량 Top30, 종목 상승률 Tier"
 
     tags = [
         '<meta property="og:type" content="website">',

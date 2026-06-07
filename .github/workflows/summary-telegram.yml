@@ -38,8 +38,17 @@ jobs:
           CHROME_PATH: ${{ steps.chrome.outputs.chrome-path }}
           TZ: Asia/Seoul
         run: |
-          # 오늘(KST) 스냅샷으로 리포트 빌드 → 요약 이미지 3장 생성
-          python main.py --market kr --force
+          set -e
+          # 1) 오늘(KST) 스냅샷으로 빌드 시도. 휴장/장전이면 exit 1 로 끝나지만 무시.
+          python main.py --market kr --force || echo "오늘 빌드 스킵(휴장/장전일 수 있음)"
+          # 2) 빌드된 리포트가 없으면(휴장·러너 초기상태) 최신 거래일 CSV 로 폴백 빌드.
+          #    output/kr/data/market_*.csv 는 git 에 포함되므로 러너에서도 사용 가능.
+          if ! ls output/kr/report/*].html >/dev/null 2>&1; then
+            LATEST=$(ls output/kr/data/market_*.csv | sed -E 's/.*market_([0-9]{8})\.csv/\1/' | sort | tail -1)
+            echo "리포트 없음 → 최신 거래일($LATEST)로 폴백 빌드"
+            python main.py --market kr --date "$LATEST"
+          fi
+          # 3) 가장 최근 리포트로 요약 이미지 3장 생성
           python -m scripts.make_summary_images
 
       - name: Send to Telegram
