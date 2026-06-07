@@ -1,0 +1,81 @@
+name: summary-telegram
+
+# 요약 이미지 3장(카톡/공유용)을 만들어 텔레그램으로 발송.
+# 점심·장마감 하루 2회. GitHub Actions cron 은 UTC → KST 12:33/15:33 == UTC 03:33/06:33.
+on:
+  schedule:
+    - cron: "33 3 * * 1-5"   # 월~금 UTC 03:33 == KST 12:33 (점심)
+    - cron: "33 6 * * 1-5"   # 월~금 UTC 06:33 == KST 15:33 (장마감)
+  workflow_dispatch:          # 수동 실행도 허용
+
+concurrency:
+  group: summary-telegram
+  cancel-in-progress: true
+
+jobs:
+  summary:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install deps
+        run: pip install pandas requests lxml pillow
+
+      # 요약 이미지 캡처에 필요한 헤드리스 Chrome.
+      - name: Install Chrome
+        uses: browser-actions/setup-chrome@v1
+        id: chrome
+
+      - name: Build report + summary images
+        env:
+          SITE_BASE_URL: ${{ secrets.SITE_BASE_URL }}
+          WEB3FORMS_KEY: ${{ secrets.WEB3FORMS_KEY }}
+          FEEDBACK_EMAIL: ${{ secrets.FEEDBACK_EMAIL }}
+          CHROME_PATH: ${{ steps.chrome.outputs.chrome-path }}
+          TZ: Asia/Seoul
+        run: |
+          # 오늘(KST) 스냅샷으로 리포트 빌드 → 요약 이미지 3장 생성
+          python main.py --market kr --force
+          python -m scripts.make_summary_images
+
+      - name: Send to Telegram
+        env:
+          BOT: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TZ: Asia/Seoul
+        run: |
+          set -e
+          # 가장 최근 생성된 summary 폴더(날짜) 찾기
+          DIR=$(ls -d output/kr/summary/*/ 2>/dev/null | sort | tail -1)
+          if [ -z "$DIR" ]; then
+            echo "요약 이미지가 없습니다 — 발송 스킵 (휴장일일 수 있음)"
+            exit 0
+          fi
+          DATE=$(basename "$DIR")
+          STAMP=$(date '+%Y-%m-%d %H:%M KST')
+          echo "발송 대상: $DIR ($DATE)"
+
+          # 3장을 미디어 그룹(앨범)으로 한 번에 전송. 캡션은 첫 장에만.
+          send_one () {
+            local file="$1"; local caption="$2"
+            curl -sS -X POST "https://api.telegram.org/bot${BOT}/sendPhoto" \
+              -F "chat_id=${CHAT}" \
+              -F "photo=@${file}" \
+              -F "caption=${caption}" >/dev/null
+          }
+
+          n=0
+          for f in "$DIR"summary-1.png "$DIR"summary-2.png "$DIR"summary-3.png; do
+            [ -f "$f" ] || continue
+            if [ "$n" -eq 0 ]; then
+              send_one "$f" "📊 Market Brief ${DATE} · ${STAMP}"
+            else
+              send_one "$f" ""
+            fi
+            n=$((n+1))
+          done
+          echo "텔레그램 발송 완료: ${n}장"

@@ -608,6 +608,7 @@ def write_html(path, *, date_str, session, generated_at, overall, by_market, tie
         generated_at=generated_at,
         report_title=config.MARKET_NAME,
         market_subtitle=config.MARKET_SUBTITLE,
+        year=date_str[:4],
         themes_css=all_themes_css(theme_name),
         default_theme=theme_name,
         theme_ids_json=json.dumps(theme_ids(), ensure_ascii=False),
@@ -933,8 +934,11 @@ _PAGE = """<!doctype html>
               background:linear-gradient(135deg,var(--accent),var(--up)); }}
   .tv-meta .tv-mult ~ .tv-rate {{ margin-left:auto; }}
 
-  footer {{ margin-top:32px; padding-top:20px; text-align:center; font-family:var(--round);
-            font-size:11.5px; color:var(--faint); letter-spacing:.02em; font-weight:600; }}
+  footer {{ margin-top:32px; padding-top:20px; border-top:1px solid var(--line);
+            text-align:center; font-family:var(--round); letter-spacing:.02em; }}
+  footer .foot-disc {{ margin:0 auto; max-width:560px; font-size:11.5px; line-height:1.6;
+            color:var(--sub); font-weight:600; }}
+  footer .foot-copy {{ margin:10px 0 0; font-size:11px; color:var(--faint); font-weight:600; }}
 
   /* 마스코트 스타일은 mascot/mascots.css 로 분리(mascots.js 가 런타임 주입). 여기엔 두지 않는다. */
 
@@ -1082,7 +1086,10 @@ _PAGE = """<!doctype html>
     {date_nav}
   </header>
   {body}
-  <footer>Market Brief V1 — 시장 분위기 파악용 경량 리포트 · 투자 판단의 근거가 아닙니다.</footer>
+  <footer>
+    <p class="foot-disc">본 리포트는 시장 분위기 파악을 돕기 위한 참고 자료이며, 특정 종목의 매수·매도 권유나 투자 판단의 근거가 아닙니다. 데이터 지연·오류가 있을 수 있으며 모든 투자 책임은 이용자 본인에게 있습니다.</p>
+    <p class="foot-copy">© {year} Market Brief · 시장 분위기 파악용 경량 리포트</p>
+  </footer>
 </div>
 {mascots}
 </body>

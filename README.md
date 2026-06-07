@@ -117,6 +117,26 @@ python scripts/publish_pages.py --intraday  # 최신 날짜만 갱신(장중 경
 
 `Actions` 탭에서 수동 실행(`workflow_dispatch`)도 가능합니다.
 
+## 요약 이미지 + 텔레그램 발송
+
+리포트에서 공유용 요약 이미지 3장(1080px)을 만듭니다.
+
+```bash
+python -m scripts.make_summary_images            # 최신 빌드 리포트
+python -m scripts.make_summary_images 20260605   # 특정 날짜
+```
+
+* `summary-1` 시장 요약 + 거래대금/거래량 Top30
+* `summary-2` 종목 Tier
+* `summary-3` 섹터 Tier
+* 출력: `output/kr/summary/<날짜>/` (헤드리스 Chrome 필요, `CHROME_PATH`로 경로 지정 가능)
+
+`.github/workflows/summary-telegram.yml`이 평일 **12:33 / 15:33 KST**에 위 이미지를
+만들어 텔레그램으로 보냅니다. 발송에는 아래 두 Secret이 필요합니다.
+
+* `TELEGRAM_BOT_TOKEN` — @BotFather 로 만든 봇 토큰
+* `TELEGRAM_CHAT_ID` — 받을 채팅 ID
+
 ## GitHub Pages 게시
 
 리포트·마스코트·이미지를 `docs/`로 복사해 GitHub Pages에서 볼 수 있게 발행합니다.
