@@ -198,19 +198,15 @@
       if (c.offset.y != null) wrap.style.bottom = px(c.offset.y);
     }
 
-    // 말풍선 크기·위치(미지정 시 CSS 기본값 유지). 변수는 wrap 에 두면 bubble 이 상속.
-    //   bubbleWidth     : 말풍선 폭            → --mb-bubble-w
-    //   bubbleFontSize  : 제목/본문 글자 크기   → --mb-bubble-fs (본문은 -1px)
-    //   bubbleOffset.x  : 마스코트 기준 좌우 보정(좌/우 위치는 position 따라)
-    //   bubbleOffset.y  : 마스코트와의 세로 간격 → --mb-bubble-gap
-    if (c.bubbleWidth != null) wrap.style.setProperty("--mb-bubble-w", px(c.bubbleWidth));
-    if (c.bubbleFontSize != null) wrap.style.setProperty("--mb-bubble-fs", px(c.bubbleFontSize));
-    if (c.bubbleOffset) {
-      if (c.bubbleOffset.x != null) wrap.style.setProperty("--mb-bubble-x", px(c.bubbleOffset.x));
-      if (c.bubbleOffset.y != null) wrap.style.setProperty("--mb-bubble-gap", px(c.bubbleOffset.y));
-    }
-    // bubbleHeight: 말풍선 높이 고정. 변수는 bubble 에 직접 둬야 CSS [style*=…] 선택자가 잡는다.
-    if (bubble && c.bubbleHeight != null) bubble.style.setProperty("--mb-bubble-h", px(c.bubbleHeight));
+    // 말풍선 크기·위치(미지정 시 CSS 기본값 유지). 변수는 bubble 에 직접 둔다
+    //   → CSS 가 [style*="--mb-bubble-…"] 로 잡아 데스크톱/모바일을 분기.
+    // 데스크톱 키 / 모바일 키(접미사 Mobile, 미지정 시 데스크톱값으로 폴백):
+    //   bubbleWidth     / bubbleWidthMobile      말풍선 폭          → --mb-bubble-w(-sm)
+    //   bubbleHeight    / bubbleHeightMobile     말풍선 높이 고정    → --mb-bubble-h(-sm)
+    //   bubbleFontSize  / bubbleFontSizeMobile   글자 크기(본문 -1px)→ --mb-bubble-fs(-sm)
+    //   bubbleOffset.x  / bubbleOffsetMobile.x   좌우 보정          → --mb-bubble-x(-sm)
+    //   bubbleOffset.y  / bubbleOffsetMobile.y   세로 간격          → --mb-bubble-gap(-sm)
+    if (bubble) applyBubbleVars(bubble, c);
 
     if (bubble) wrap.appendChild(bubble);
     var btn = el("button", "mascot-btn", {

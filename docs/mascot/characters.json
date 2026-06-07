@@ -27,7 +27,7 @@
         ],
         "down": [
           "오늘은 파란불 가득한 하락장 📉 무리하지 마세요",
-          "쉬어가는 것도 투자예요. 마음 편히 둘러보세요 🫧"
+          "쉬어가는 것도 투자예요. 마음 편히 둘러보세요"
         ],
         "flat": [
           "오늘은 잔잔한 보합장이에요. 천천히 살펴봐요 🍃"
@@ -63,7 +63,7 @@
       "type": "feedback",
       "position": "right",
       "image": "/images/pengu2_clear.png",
-      "size": 100,
+      "size": 90,
       "sizeMobile": 72,
       "offset": { "x": 16, "y": 16 },
       "active": true,
@@ -77,8 +77,8 @@
       "bubbleFontSizeMobile": 10,
       "formWidthMobile": 200,
       "greetTitle": "",
-      "greetMsg": "개선·요청사항 보내기💌",
-      "formTitle": "개선·요청사항을 자유롭게 남겨주세요!",
+      "greetMsg": "개선·요청사항 보내기!",
+      "formTitle": "개선·요청사항을 자유롭게 남겨주세요💌",
       "subject": "[MarketBrief] 피드백",
       "fromName": "MarketBrief 방문자"
     },

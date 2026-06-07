@@ -41,7 +41,7 @@
 .mascot-btn.is-active { transform:scale(1.03); }
 .mascot-btn svg { width:100%; height:auto; display:block; }
 /* 캐릭터 숨김(×) 버튼 — 모든 마스코트 공통으로 우상단에 둔다. */
-.mascot-hide { position:absolute; top:-8px; right:-2px; left:auto; z-index:55;
+.mascot-hide { position:absolute; top:-2px; right:-2px; left:auto; z-index:55;
                 width:24px; height:24px; border-radius:50%; cursor:pointer;
                 border:1px solid var(--line); background:var(--panel); color:var(--sub);
                 font-size:15px; line-height:1; display:flex; align-items:center;
@@ -75,7 +75,7 @@
                          border-right:1px solid var(--line); border-bottom:1px solid var(--line);
                          transform:rotate(45deg); }
 .mascot-bubble-title { font-family:var(--round); font-size:var(--mb-bubble-fs,13.5px); font-weight:800;
-                        color:var(--heading); margin-bottom:1px; }
+                        color:var(--heading); margin-bottom:3px; }
 .mascot-bubble-msg { font-size:calc(var(--mb-bubble-fs,13.5px) - 1px); line-height:1.5; color:var(--sub); }
 .mascot-x { position:absolute; top:6px; right:8px; border:none; background:none; cursor:pointer;
              font-size:18px; line-height:1; color:var(--faint); }
