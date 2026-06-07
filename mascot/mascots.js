@@ -79,14 +79,39 @@
       }
     });
 
-    // 숨김(×) 버튼 — 이 세션 동안만 숨김(새로고침하면 복원)
+    // 숨김(×) 버튼 — 이 세션 동안만 숨김(새로고침하면 복원).
+    // 숨기면 화면 좌상단 도크에 캐릭터 색의 원형 "다시 켜기" 버튼이 생기고,
+    // 그 버튼을 누르면 마스코트가 복원되고 원은 사라진다.
     if (o.hideBtn) {
       o.hideBtn.addEventListener("click", function (e) {
-        e.stopPropagation(); wrap.style.display = "none";
+        e.stopPropagation();
+        wrap.style.display = "none";
+        addRestoreDot(o.color, o.restoreLabel, function () { wrap.style.display = ""; });
       });
     }
 
     return { showBubble: showBubble, isOpen: bubbleOpen };
+  }
+
+  // 좌상단 "다시 켜기" 도크 — 숨긴 마스코트별로 원형 버튼을 세로로 쌓는다.
+  var restoreDock = null;
+  function ensureDock() {
+    if (restoreDock) return restoreDock;
+    restoreDock = el("div", "mascot-dock");
+    document.body.appendChild(restoreDock);
+    return restoreDock;
+  }
+  function addRestoreDot(color, label, onClick) {
+    var dock = ensureDock();
+    var dot = el("button", "mascot-dot", { type: "button", "aria-label": (label || "마스코트") + " 다시 보기", title: (label || "마스코트") + " 다시 보기" });
+    if (color) dot.style.background = color;
+    dot.addEventListener("click", function (e) {
+      e.stopPropagation();
+      onClick();
+      if (dot.parentNode) dot.parentNode.removeChild(dot);
+    });
+    dock.appendChild(dot);
+    return dot;
   }
 
   // ── DOM 헬퍼 ──
@@ -139,6 +164,26 @@
 
   function px(v) { return typeof v === "number" ? v + "px" : v; }
 
+  // 말풍선 CSS 변수 설정: 데스크톱(--mb-bubble-…) + 모바일(--mb-bubble-…-sm).
+  // 모바일값이 없으면 데스크톱값으로 폴백해, 모바일 미지정 시에도 일관되게 보인다.
+  function applyBubbleVars(bubble, c) {
+    function set(name, deskVal, mobVal) {
+      if (deskVal != null) bubble.style.setProperty("--mb-bubble-" + name, px(deskVal));
+      var m = (mobVal != null) ? mobVal : deskVal;        // 모바일 미지정 → 데스크톱값
+      if (m != null) bubble.style.setProperty("--mb-bubble-" + name + "-sm", px(m));
+    }
+    var od = c.bubbleOffset || {}, om = c.bubbleOffsetMobile || {};
+    set("w",   c.bubbleWidth,     c.bubbleWidthMobile);
+    set("h",   c.bubbleHeight,    c.bubbleHeightMobile);
+    set("fs",  c.bubbleFontSize,  c.bubbleFontSizeMobile);
+    set("x",   od.x,              om.x);
+    set("gap", od.y,              om.y);
+    // feedback 폼 상태(펭귄) 전용 폭. 변수 이름만 다르므로 직접 설정.
+    if (c.formWidth != null) bubble.style.setProperty("--mb-form-w", px(c.formWidth));
+    var fm = (c.formWidthMobile != null) ? c.formWidthMobile : c.formWidth;
+    if (fm != null) bubble.style.setProperty("--mb-form-w-sm", px(fm));
+  }
+
   // 공통 골격: wrap > [bubble] + btn + hide  → body 에 부착하고 참조 반환.
   function shell(c, bubble) {
     var right = c.position === "right";
@@ -152,6 +197,16 @@
       if (c.offset.x != null) wrap.style[right ? "right" : "left"] = px(c.offset.x);
       if (c.offset.y != null) wrap.style.bottom = px(c.offset.y);
     }
+
+    // 말풍선 크기·위치(미지정 시 CSS 기본값 유지). 변수는 bubble 에 직접 둔다
+    //   → CSS 가 [style*="--mb-bubble-…"] 로 잡아 데스크톱/모바일을 분기.
+    // 데스크톱 키 / 모바일 키(접미사 Mobile, 미지정 시 데스크톱값으로 폴백):
+    //   bubbleWidth     / bubbleWidthMobile      말풍선 폭          → --mb-bubble-w(-sm)
+    //   bubbleHeight    / bubbleHeightMobile     말풍선 높이 고정    → --mb-bubble-h(-sm)
+    //   bubbleFontSize  / bubbleFontSizeMobile   글자 크기(본문 -1px)→ --mb-bubble-fs(-sm)
+    //   bubbleOffset.x  / bubbleOffsetMobile.x   좌우 보정          → --mb-bubble-x(-sm)
+    //   bubbleOffset.y  / bubbleOffsetMobile.y   세로 간격          → --mb-bubble-gap(-sm)
+    if (bubble) applyBubbleVars(bubble, c);
 
     if (bubble) wrap.appendChild(bubble);
     var btn = el("button", "mascot-btn", {
@@ -229,6 +284,7 @@
     var api = runtime({
       wrap: parts.wrap, btn: parts.btn, bubble: bubble,
       posKey: "mb_" + c.id + "_pos", hideBtn: parts.hide,
+      color: c.restoreColor, restoreLabel: c.ariaButton || c.title || c.id,
       onToggle: function (ctx) {
         if (!ctx.isOpen) { render(); ctx.showBubble(true); }
         else if (msgs && msgs.length > 1) { idx++; render(); }
@@ -249,9 +305,13 @@
     var x = closeBtn();
 
     var greet = el("div", "fb-greet");
-    var gT = el("div", "mascot-bubble-title"); gT.textContent = c.greetTitle || "반가워요!";
+    // greetTitle 이 빈 문자열/누락이면 제목 줄을 아예 만들지 않는다(공간 절약).
+    if (c.greetTitle) {
+      var gT = el("div", "mascot-bubble-title"); gT.textContent = c.greetTitle;
+      greet.appendChild(gT);
+    }
     var gM = el("div", "mascot-bubble-msg"); gM.textContent = c.greetMsg || "";
-    greet.appendChild(gT); greet.appendChild(gM);
+    greet.appendChild(gM);
 
     var form = el("form", null, { hidden: "" });
     var fT = el("div", "mascot-bubble-title"); fT.textContent = c.formTitle || "";
@@ -280,6 +340,7 @@
     var api = runtime({
       wrap: parts.wrap, btn: parts.btn, bubble: bubble,
       posKey: "mb_" + c.id + "_pos", hideBtn: parts.hide,
+      color: c.restoreColor, restoreLabel: c.ariaButton || c.title || c.id,
       onToggle: function (ctx) {
         if (!ctx.isOpen) { setMode("greet"); ctx.showBubble(true); }
         else { setMode(form.hidden ? "form" : "greet"); }
@@ -343,13 +404,16 @@
 
     function render() {
       title.textContent = c.title || "테마 변경";
-      msg.textContent = "현재 «" + labelOf(curId()) + "» · 누르면 다음 테마로 바뀌어요";
+      // hideStatus:true 면 제목(문구)만 보이고 현재 테마 안내 줄은 숨긴다.
+      msg.textContent = c.hideStatus ? "" : ("현재 «" + labelOf(curId()) + "» · 누르면 다음 테마로 바뀌어요");
+      msg.hidden = !!c.hideStatus;
     }
     render();
 
     var api = runtime({
       wrap: parts.wrap, btn: parts.btn, bubble: bubble,
       posKey: "mb_" + c.id + "_pos", hideBtn: parts.hide,
+      color: c.restoreColor, restoreLabel: c.ariaButton || c.title || c.id,
       onToggle: function (ctx) {
         if (!ctx.isOpen) { render(); ctx.showBubble(true); return; }
         // 이미 열려 있으면 다음 테마로 순환
