@@ -6,6 +6,7 @@
   python -m scripts.make_summary_images --out docs/kr/20260605  # 출력 폴더 지정
 
   python -m scripts.make_summary_images --theme mode2     # 특정 테마만
+  python -m scripts.make_summary_images --no-send         # 발송 없이 이미지만
 
 카드 구성(폭 1080px):
   summary-1 : 시장 요약 + 시장 진단 + 거래대금 Top30 + 거래량 급증 Top30  (마스코트: bear)
@@ -18,14 +19,20 @@
 
 동작: 빌드된 리포트 HTML(output/kr/report/…[날짜].html)에 스타일/스크립트를 주입해
   대상 섹션만 남기고, 헤드리스 Chrome 으로 전체를 캡처한 뒤 배경 여백을 잘라 1080px
-  폭으로 저장한다. 하단 여백에 카드별 마스코트 + "더 많은 정보는 marketbrief.kr"
-  말풍선을 넣는다. 리포트 섹션의 실제 스타일을 그대로 재사용하므로 CSS 중복이 없다.
+  폭으로 저장한다. 좌상단에 카드별 마스코트 + "marketbrief.kr" 말풍선, 상단 중앙에
+  "<날짜> 오전장/장마감 요약"(실행 시각으로 자동 판단)을 넣는다.
+
+발송: TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID 환경변수가 있으면, 각 테마 3장을 생성한
+  직후 곧바로 텔레그램 앨범(sendMediaGroup)으로 발송한다(테마별 파이프라인). 한 테마
+  발송이 실패해도 다음 테마는 계속 진행하고, 끝에 성공/실패 개수를 보고한다.
+  --no-send 또는 환경변수 미설정 시 이미지만 생성한다.
 """
 
 from __future__ import annotations
 
 import argparse
 import glob
+import json
 import os
 import re
 import subprocess
@@ -58,6 +65,7 @@ CARDS = [
 
 # 리포트 테마(<html data-theme>) — characters.json/report.css 와 동일한 mode 키.
 THEMES = ["mode1", "mode2", "mode3", "mode4"]
+THEME_LABELS = {"mode1": "파스텔", "mode2": "다크", "mode3": "전문가", "mode4": "세피아"}
 
 FOOT_TEXT = "marketbrief.kr"
 
@@ -192,6 +200,32 @@ def _trim_and_resize(png: Path) -> None:
     im.save(png)
 
 
+def _send_telegram_album(bot: str, chat: str, pngs: list[Path], caption: str) -> bool:
+    """한 테마(3장)를 sendMediaGroup 앨범으로 발송. 실패해도 예외를 던지지 않고 False 반환."""
+    import requests
+
+    media, files = [], {}
+    for i, p in enumerate(pngs, 1):
+        key = f"p{i}"
+        item = {"type": "photo", "media": f"attach://{key}"}
+        if i == 1:
+            item["caption"] = caption
+        media.append(item)
+        files[key] = (p.name, p.read_bytes(), "image/png")
+    try:
+        r = requests.post(
+            f"https://api.telegram.org/bot{bot}/sendMediaGroup",
+            data={"chat_id": chat, "media": json.dumps(media)},
+            files=files, timeout=60,
+        )
+        if r.status_code == 200 and r.json().get("ok"):
+            return True
+        print(f"  · [발송 실패] HTTP {r.status_code}: {r.text[:160]}")
+    except Exception as exc:
+        print(f"  · [발송 오류] {str(exc)[:160]}")
+    return False
+
+
 def main(argv=None) -> None:
     try:
         sys.stdout.reconfigure(encoding="utf-8")
@@ -202,7 +236,18 @@ def main(argv=None) -> None:
     ap.add_argument("--out", help="출력 폴더 (기본: output/kr/summary/<날짜>)")
     ap.add_argument("--theme", choices=THEMES,
                     help="특정 테마만 생성 (생략 시 4테마 전부)")
+    ap.add_argument("--no-send", action="store_true",
+                    help="텔레그램 발송 없이 이미지만 생성")
     args = ap.parse_args(argv)
+
+    # 텔레그램 발송: BOT/CHAT 환경변수가 있고 --no-send 가 아니면 테마 생성 직후 발송.
+    bot = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+    chat = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
+    do_send = bool(bot and chat) and not args.no_send
+    if args.no_send:
+        print("  · --no-send: 발송 생략")
+    elif not (bot and chat):
+        print("  · TELEGRAM_BOT_TOKEN/CHAT_ID 미설정 — 발송 생략(이미지만 생성)")
 
     chrome = _find_chrome()
     if not chrome:
@@ -224,13 +269,18 @@ def main(argv=None) -> None:
     base_dir = Path(args.out) if args.out else (ROOT / "output" / "kr" / "summary" / date_str)
     themes = [args.theme] if args.theme else THEMES
     report_html = report.read_text(encoding="utf-8")
-    print(f"▶ 요약 이미지 생성  |  {date_str}  ←  {report.name}  |  테마 {len(themes)}종")
+    stamp = datetime.now().strftime("%Y-%m-%d %H:%M KST")
+    print(f"▶ 요약 이미지 생성  |  {date_str}  ←  {report.name}  |  테마 {len(themes)}종"
+          f"{' · 발송 ON' if do_send else ''}")
 
     made = 0
+    sent = 0          # 발송 성공한 테마 수
+    send_fail = 0     # 발송 시도했으나 실패한 테마 수
     for theme in themes:
         themed_html = _apply_theme(report_html, theme)
         out_dir = base_dir / theme
         out_dir.mkdir(parents=True, exist_ok=True)
+        pngs = []     # 이 테마에서 생성에 성공한 이미지(발송 대상)
         for name, ids, sub, mascot in CARDS:
             style, script = _card_inject(ids, head_title, mascot_uris[mascot])
             card_html = _build_card_html(themed_html, style, script)
@@ -242,11 +292,26 @@ def main(argv=None) -> None:
                 if _capture(chrome, tmp, out_png):
                     _trim_and_resize(out_png)
                     made += 1
+                    pngs.append(out_png)
                     print(f"  ✔ [{theme}] {out_png.relative_to(ROOT)}")
             finally:
                 tmp.unlink(missing_ok=True)
 
+        # 이 테마 3장 생성 직후 곧바로 앨범 발송(실패해도 다음 테마로 계속).
+        if do_send and len(pngs) == len(CARDS):
+            cap = f"📊 Market Brief {head_title} · {THEME_LABELS.get(theme, theme)} · {stamp}"
+            if _send_telegram_album(bot, chat, pngs, cap):
+                sent += 1
+                print(f"  → [{theme}] 텔레그램 발송 완료")
+            else:
+                send_fail += 1
+        elif do_send:
+            send_fail += 1
+            print(f"  → [{theme}] 이미지 누락으로 발송 스킵")
+
     print(f"완료: {made}/{len(themes) * len(CARDS)} 장 → {base_dir.relative_to(ROOT)}")
+    if do_send:
+        print(f"발송: {sent}개 테마 성공" + (f", {send_fail}개 실패" if send_fail else ""))
 
 
 if __name__ == "__main__":

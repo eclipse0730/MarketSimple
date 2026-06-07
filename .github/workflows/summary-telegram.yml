@@ -31,12 +31,17 @@ jobs:
         uses: browser-actions/setup-chrome@v1
         id: chrome
 
-      - name: Build report + summary images
+      # 리포트 빌드 → 요약 이미지 생성 → 테마별 즉시 발송까지 한 스텝에서 처리.
+      # make_summary_images 가 각 테마 3장을 만든 직후 곧바로 텔레그램 앨범을 보낸다
+      # (TELEGRAM_BOT_TOKEN/CHAT_ID 가 있을 때). 빠른 테마부터 순차 도착한다.
+      - name: Build report + summary images + send
         env:
           SITE_BASE_URL: ${{ secrets.SITE_BASE_URL }}
           WEB3FORMS_KEY: ${{ secrets.WEB3FORMS_KEY }}
           FEEDBACK_EMAIL: ${{ secrets.FEEDBACK_EMAIL }}
           CHROME_PATH: ${{ steps.chrome.outputs.chrome-path }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           TZ: Asia/Seoul
         run: |
           set -e
@@ -49,56 +54,5 @@ jobs:
             echo "리포트 없음 → 최신 거래일($LATEST)로 폴백 빌드"
             python main.py --market kr --date "$LATEST"
           fi
-          # 3) 가장 최근 리포트로 요약 이미지 생성(4테마 × 3장 = 12장)
+          # 3) 요약 이미지 생성(4테마 × 3장) + 테마별 즉시 텔레그램 발송
           python -m scripts.make_summary_images
-
-      - name: Send to Telegram
-        env:
-          BOT: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
-          TZ: Asia/Seoul
-        run: |
-          set -e
-          # 가장 최근 생성된 summary 폴더(날짜) 찾기. 하위에 테마별(modeN) 폴더가 들어있다.
-          DIR=$(ls -d output/kr/summary/*/ 2>/dev/null | sort | tail -1)
-          if [ -z "$DIR" ]; then
-            echo "요약 이미지가 없습니다 — 발송 스킵 (휴장일일 수 있음)"
-            exit 0
-          fi
-          DATE=$(basename "$DIR")
-          STAMP=$(date '+%Y-%m-%d %H:%M KST')
-          echo "발송 대상: $DIR ($DATE)"
-
-          # 테마 키 → 한글 라벨 (characters.json/report.css 와 동일)
-          theme_label () {
-            case "$1" in
-              mode1) echo "파스텔" ;; mode2) echo "다크" ;;
-              mode3) echo "전문가" ;; mode4) echo "세피아" ;;
-              *) echo "$1" ;;
-            esac
-          }
-
-          # 한 테마(3장)를 앨범(sendMediaGroup)으로 전송. 캡션은 앨범 첫 장에만.
-          sent=0
-          for theme in mode1 mode2 mode3 mode4; do
-            tdir="${DIR}${theme}/"
-            files=("${tdir}summary-1.png" "${tdir}summary-2.png" "${tdir}summary-3.png")
-            # 3장이 모두 있어야 앨범 전송
-            ok=1; for f in "${files[@]}"; do [ -f "$f" ] || ok=0; done
-            [ "$ok" -eq 1 ] || { echo "스킵: $theme (이미지 누락)"; continue; }
-
-            cap="📊 Market Brief ${DATE} · $(theme_label "$theme") · ${STAMP}"
-            # media 배열(JSON) + 파일 첨부를 함께 구성
-            media="[{\"type\":\"photo\",\"media\":\"attach://p1\",\"caption\":\"${cap}\"},"
-            media+="{\"type\":\"photo\",\"media\":\"attach://p2\"},"
-            media+="{\"type\":\"photo\",\"media\":\"attach://p3\"}]"
-            curl -sS -X POST "https://api.telegram.org/bot${BOT}/sendMediaGroup" \
-              -F "chat_id=${CHAT}" \
-              -F "media=${media}" \
-              -F "p1=@${files[0]}" \
-              -F "p2=@${files[1]}" \
-              -F "p3=@${files[2]}" >/dev/null
-            echo "발송: $theme 앨범 3장"
-            sent=$((sent+1))
-          done
-          echo "텔레그램 발송 완료: ${sent}개 테마 앨범"
