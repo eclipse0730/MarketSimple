@@ -307,6 +307,11 @@ def main(argv=None):
     if big_theme is not None:
         print(f"  · 대테마: {len(big_theme)}개 / 매핑 종목 {len(big_theme_map):,}")
 
+    group_members = {
+        "sector": analyzer.group_members(df, sector_map, "섹터") if len(sector_map) else {},
+        "big": analyzer.group_members(df, big_theme_map, "대테마") if len(big_theme_map) else {},
+    }
+
     # 3) 출력
     report_shared.write_theme_map(theme_map, theme_map_path)
     date_nav = build_date_nav(date_str, available_report_dates(data_dir))
@@ -323,6 +328,7 @@ def main(argv=None):
         sector_tiers=sector_tiers,
         sector_market_avg=sector_market_avg,
         big_theme=big_theme,
+        group_members=group_members,
         top_value=top_value,
         top_value_common=top_value_common,
         top_volume=top_volume,

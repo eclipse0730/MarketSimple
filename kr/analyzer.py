@@ -334,3 +334,25 @@ def big_theme_heatmap(df, big_theme_map):
     )
     grp["평균등락률"] = grp["평균등락률"].round(2)
     return grp.sort_values("평균등락률", ascending=False).reset_index(drop=True)
+
+
+def group_members(df, group_map, col):
+    """섹터/대테마별 상세 모달에 표시할 종목 리스트를 만든다."""
+    if group_map is None or not len(group_map):
+        return {}
+
+    gm = group_map[["종목코드", col]].copy()
+    merged = df[["종목코드", "종목명", "등락률"]].merge(gm, on="종목코드", how="inner")
+    merged = merged.sort_values("등락률", ascending=False)
+
+    out = {}
+    for key, sub in merged.groupby(col, sort=False):
+        out[str(key)] = [
+            {
+                "code": str(r.종목코드).zfill(6),
+                "name": str(r.종목명),
+                "rate": round(float(r.등락률), 2),
+            }
+            for r in sub.itertuples()
+        ]
+    return out

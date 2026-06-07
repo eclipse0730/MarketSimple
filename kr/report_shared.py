@@ -447,9 +447,11 @@ def _section_top_volume(top_volume, top_volume_common=None):
 
 
 def _sector_chip(row):
-    """섹터 티어 칩 — 값은 시장 대비 초과수익(%p), 색은 초과수익 부호."""
+    """섹터 티어 칩 — 클릭하면 해당 섹터 종목 리스트 모달을 연다."""
+    name = escape(str(row.섹터))
     return (
-        f'<span class="chip {_cls(row.초과)}">'
+        f'<span class="chip gm-open {_cls(row.초과)}" role="button" tabindex="0" '
+        f'data-gkind="sector" data-gkey="{name}">'
         f'<span class="c-name">{row.섹터}</span>'
         f'<span class="c-rate mono">{_fmt(row.초과)}p</span></span>'
     )
@@ -504,31 +506,36 @@ def _section_sector_tiers(sector_tiers, market_avg, theme):
     </section>"""
 
 
-_HEAT_RANGE = 3.0  # ±3% 에서 색 포화
-
-
-def _lerp(c1, c2, t):
-    return tuple(round(a + (b - a) * t) for a, b in zip(c1, c2))
+_HEAT_RANGE = 4.5  # ±4.5% 에서 색 포화
 
 
 def _heat_style(rate):
-    """평균 등락률 → 카드 배경/글자색 (한국식: 상승 빨강, 하락 파랑)."""
-    white, up, down = (255, 255, 255), (224, 49, 49), (28, 126, 214)
+    """평균 등락률 → 테마 변수 기반의 히트맵 강조 강도."""
     ratio = min(abs(rate) / _HEAT_RANGE, 1.0)
-    t = 0.12 + 0.88 * ratio
     if rate > 0:
-        bg = _lerp(white, up, t)
+        color, soft, mid = "--up", "--up-soft", "--up-mid"
     elif rate < 0:
-        bg = _lerp(white, down, t)
+        color, soft, mid = "--down", "--down-soft", "--down-mid"
     else:
-        bg, t = (241, 243, 245), 0.2
-    fg = "#ffffff" if t >= 0.55 else "#212529"
-    return f"background:rgb({bg[0]},{bg[1]},{bg[2]});color:{fg}"
+        color, soft, mid = "--flat", "--flat-soft", "--flat"
+    strength = round(7 + ratio * 20)
+    edge = round(32 + ratio * 48)
+    glow = round(4 + ratio * 11)
+    hover_glow = glow + 5
+    stripe = round(3 + ratio * 3)
+    return (
+        f"--heat-color:var({color});--heat-soft:var({soft});--heat-mid:var({mid});"
+        f"--heat-strength:{strength}%;--heat-edge:{edge}%;"
+        f"--heat-glow:{glow}%;--heat-hover-glow:{hover_glow}%;"
+        f"--heat-stripe:{stripe}px;"
+    )
 
 
 def _heat_card(r):
+    name = escape(str(r.대테마))
     return f"""
-        <div class="heat-cell" style="{_heat_style(r.평균등락률)}">
+        <div class="heat-cell gm-open {_cls(r.평균등락률)}" role="button" tabindex="0"
+             data-gkind="big" data-gkey="{name}" style="{_heat_style(r.평균등락률)}">
           <span class="h-name">{r.대테마}</span>
           <span class="h-val mono">{_fmt(r.평균등락률)}%</span>
           <span class="h-sub">{r.종목수}종목 · ▲{r.상승} ▼{r.하락}</span>
@@ -545,6 +552,24 @@ def _section_heatmap(big_theme):
         <span class="sec-note">평균 등락률 · 강한 → 약한</span></div>
       <div class="heatmap">{cells}</div>
     </section>"""
+
+
+def _group_modal_html(group_members):
+    data = group_members or {"sector": {}, "big": {}}
+    payload = json.dumps(data, ensure_ascii=False)
+    return f"""
+    <script id="mb-group-data" type="application/json">{payload}</script>
+    <div class="gm-modal" id="gmModal" hidden>
+      <div class="gm-backdrop" data-close></div>
+      <div class="gm-panel" role="dialog" aria-modal="true" aria-labelledby="gmTitle">
+        <div class="gm-head">
+          <h3 id="gmTitle" class="gm-title"></h3>
+          <button class="gm-x" type="button" aria-label="닫기" data-close>&times;</button>
+        </div>
+        <div class="gm-sub" id="gmSub"></div>
+        <div class="gm-list" id="gmList"></div>
+      </div>
+    </div>"""
 
 
 def _date_label(date_str):
@@ -671,16 +696,17 @@ def _date_nav_html(date_str, date_nav):
     )
 
 
-def write_html(path, *, date_str, session, generated_at, overall, by_market, tiers, diagnosis=None, top=None, bottom=None, sector_top=None, sector_bottom=None, sector_tiers=None, sector_market_avg=None, big_theme=None, top_value=None, top_value_common=None, top_volume=None, top_volume_common=None, tiers_common=None, date_nav=None, theme_name=DEFAULT_THEME):
+def write_html(path, *, date_str, session, generated_at, overall, by_market, tiers, diagnosis=None, top=None, bottom=None, sector_top=None, sector_bottom=None, sector_tiers=None, sector_market_avg=None, big_theme=None, group_members=None, top_value=None, top_value_common=None, top_volume=None, top_volume_common=None, tiers_common=None, date_nav=None, theme_name=DEFAULT_THEME):
     theme = get_theme(theme_name)
     body = _section_market(by_market)
     body += _section_diagnosis(diagnosis)
-    #body += _section_heatmap(big_theme)
     body += _section_top_value(top_value, top_value_common)
     body += _section_top_volume(top_volume, top_volume_common)
     body += _section_tiers(tiers, theme, tiers_common)
     if sector_tiers:
         body += _section_sector_tiers(sector_tiers, sector_market_avg, theme)
+    body += _section_heatmap(big_theme)
+    body += _group_modal_html(group_members)
     html = _PAGE.format(
         date=_date_label(date_str),
         og_tags=_og_tags_html(date_str, overall),
@@ -963,14 +989,59 @@ _PAGE = """<!doctype html>
   .empty {{ color:var(--faint); font-size:13px; }}
 
   /* big-theme heatmap */
-  .heatmap {{ display:grid; grid-template-columns:repeat(auto-fill,minmax(152px,1fr)); gap:9px; }}
-  .heat-cell {{ border-radius:14px; padding:14px 15px 13px; min-height:88px;
-               display:flex; flex-direction:column; justify-content:center; gap:3px;
-               box-shadow:0 2px 8px rgba(0,0,0,.06); transition:transform .15s ease; }}
-  .heat-cell:hover {{ transform:translateY(-2px); }}
-  .heat-cell .h-name {{ font-size:14px; font-weight:800; letter-spacing:-.01em; }}
-  .heat-cell .h-val {{ font-size:23px; font-weight:800; letter-spacing:-.03em; line-height:1.1; }}
-  .heat-cell .h-sub {{ font-size:11px; font-weight:600; opacity:.82; }}
+  .heatmap {{ display:grid; grid-template-columns:repeat(auto-fill,minmax(164px,1fr)); gap:10px; }}
+  .heat-cell {{ position:relative; overflow:hidden; border-radius:14px; padding:14px 15px 13px 17px;
+               min-height:88px; display:flex; flex-direction:column; justify-content:center; gap:4px;
+               color:var(--ink);
+               background:
+                 linear-gradient(180deg,
+                   color-mix(in srgb, var(--heat-color) var(--heat-strength), var(--panel)),
+                   color-mix(in srgb, var(--heat-soft) 32%, var(--panel))),
+                 var(--panel);
+               border:1px solid color-mix(in srgb, var(--heat-mid) var(--heat-edge), var(--line));
+               box-shadow:0 2px 10px color-mix(in srgb, var(--heat-color) var(--heat-glow), transparent);
+               transition:transform .15s ease, box-shadow .15s ease, border-color .15s ease; }}
+  .heat-cell::before {{ content:""; position:absolute; left:0; top:0; bottom:0; width:var(--heat-stripe);
+                       background:linear-gradient(180deg,var(--heat-color),var(--heat-mid)); opacity:.9; }}
+  .heat-cell:hover {{ transform:translateY(-2px);
+                     box-shadow:0 7px 20px color-mix(in srgb, var(--heat-color) var(--heat-hover-glow), transparent); }}
+  .heat-cell .h-name {{ position:relative; z-index:1; font-size:13.5px; font-weight:850;
+                       color:var(--heading); letter-spacing:0; }}
+  .heat-cell .h-val {{ position:relative; z-index:1; font-size:22px; font-weight:900;
+                      color:var(--heat-color); letter-spacing:-.02em; line-height:1.08; }}
+  .heat-cell .h-sub {{ position:relative; z-index:1; font-size:11px; font-weight:700;
+                      color:var(--sub); opacity:.9; }}
+
+  /* clickable group chips/cells and member modal */
+  .gm-open {{ cursor:pointer; }}
+  .gm-open:focus-visible {{ outline:2px solid var(--accent); outline-offset:2px; }}
+  .gm-modal {{ position:fixed; inset:0; z-index:200; display:flex;
+               align-items:center; justify-content:center; padding:20px; }}
+  .gm-modal[hidden] {{ display:none; }}
+  .gm-backdrop {{ position:absolute; inset:0; background:rgba(0,0,0,.45);
+                  animation:gmFade .15s ease; }}
+  .gm-panel {{ position:relative; width:min(440px,94vw); max-height:80vh; display:flex;
+               flex-direction:column; background:var(--panel); border:1px solid var(--line);
+               border-radius:18px; box-shadow:0 20px 60px rgba(0,0,0,.3); overflow:hidden;
+               animation:gmRise .18s cubic-bezier(.16,1,.3,1); }}
+  .gm-head {{ display:flex; align-items:center; gap:10px; padding:16px 18px 12px; }}
+  .gm-title {{ margin:0; font-family:var(--round); font-size:16px; font-weight:800;
+               color:var(--heading); flex:1; }}
+  .gm-x {{ border:none; background:none; cursor:pointer; font-size:22px; line-height:1;
+           color:var(--faint); padding:0 4px; }}
+  .gm-sub {{ padding:0 18px 10px; font-family:var(--round); font-size:12px;
+             font-weight:700; color:var(--sub); }}
+  .gm-list {{ overflow-y:auto; padding:0 12px 14px; }}
+  .gm-row {{ display:flex; align-items:center; justify-content:space-between; gap:10px;
+             padding:9px 12px; border-bottom:1px solid color-mix(in srgb, var(--line) 72%, transparent);
+             text-decoration:none; color:inherit; }}
+  .gm-row:last-child {{ border-bottom:0; }}
+  .gm-row:hover {{ background:var(--panel2); }}
+  .gm-row .gm-nm {{ font-size:13px; font-weight:600; color:var(--ink);
+                    overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }}
+  .gm-row .gm-rt {{ font-size:13px; font-weight:800; flex-shrink:0; }}
+  @keyframes gmFade {{ from{{opacity:0}} to{{opacity:1}} }}
+  @keyframes gmRise {{ from{{opacity:0;transform:translateY(12px)}} to{{opacity:1;transform:none}} }}
 
   /* themes */
   .theme-list {{ display:flex; flex-direction:column; gap:3px; }}
@@ -1224,5 +1295,74 @@ _PAGE = """<!doctype html>
   </footer>
 </div>
 {mascots}
+<script>
+(function(){{
+  var dataEl = document.getElementById('mb-group-data');
+  var modal = document.getElementById('gmModal');
+  if(!dataEl || !modal) return;
+
+  var DATA = {{}};
+  try {{ DATA = JSON.parse(dataEl.textContent) || {{}}; }} catch(e) {{ return; }}
+
+  var titleEl = document.getElementById('gmTitle');
+  var subEl = document.getElementById('gmSub');
+  var listEl = document.getElementById('gmList');
+  var lastFocus = null;
+
+  function esc(s){{
+    return String(s).replace(/[&<>"']/g, function(ch){{
+      return ({{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}})[ch];
+    }});
+  }}
+  function rateClass(v){{ return v > 0 ? 'up' : (v < 0 ? 'down' : 'flat'); }}
+  function fmtRate(v){{ return (v > 0 ? '+' : '') + Number(v).toFixed(2) + '%'; }}
+  function stockUrl(code){{ return 'https://finance.naver.com/item/main.naver?code=' + encodeURIComponent(code); }}
+
+  function openGroup(kind, key){{
+    var members = (DATA[kind] || {{}})[key];
+    if(!members) return;
+
+    titleEl.textContent = key;
+    subEl.textContent = members.length.toLocaleString() + '종목 · 등락률순';
+    var html = '';
+    for(var i = 0; i < members.length; i++){{
+      var m = members[i];
+      html += '<a class="gm-row" href="' + stockUrl(m.code) + '" target="_blank" rel="noopener noreferrer">'
+            + '<span class="gm-nm">' + esc(m.name) + '</span>'
+            + '<span class="gm-rt mono ' + rateClass(m.rate) + '">' + fmtRate(m.rate) + '</span></a>';
+    }}
+    listEl.innerHTML = html;
+    listEl.scrollTop = 0;
+    lastFocus = document.activeElement;
+    modal.hidden = false;
+    document.body.style.overflow = 'hidden';
+  }}
+
+  function closeGroup(){{
+    modal.hidden = true;
+    document.body.style.overflow = '';
+    if(lastFocus && lastFocus.focus) lastFocus.focus();
+  }}
+
+  document.addEventListener('click', function(e){{
+    var opener = e.target.closest && e.target.closest('.gm-open');
+    if(opener){{
+      openGroup(opener.getAttribute('data-gkind'), opener.getAttribute('data-gkey'));
+      return;
+    }}
+    if(e.target.closest && e.target.closest('[data-close]')) closeGroup();
+  }});
+  document.addEventListener('keydown', function(e){{
+    if(e.key === 'Escape' && !modal.hidden) closeGroup();
+    if(e.key === 'Enter' || e.key === ' '){{
+      var opener = e.target.closest && e.target.closest('.gm-open');
+      if(opener){{
+        e.preventDefault();
+        openGroup(opener.getAttribute('data-gkind'), opener.getAttribute('data-gkey'));
+      }}
+    }}
+  }});
+}})();
+</script>
 </body>
 </html>"""
