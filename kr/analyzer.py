@@ -86,6 +86,53 @@ def market_strength(df):
     return overall, by_market
 
 
+def _diagnose_one(sub):
+    """한 시장(또는 부분집합)의 진단 지표를 계산한다. 입력은 보통주만 걸러진 DataFrame."""
+    out = {"caps": [], "limit_up": None, "limit_down": None, "turnover": None}
+
+    if "시가총액" in sub.columns and len(sub):
+        cap = sub.copy()
+        cap["시가총액"] = pd.to_numeric(cap["시가총액"], errors="coerce")
+        cap = cap.dropna(subset=["시가총액"])
+        buckets = [
+            ("대형주", cap["시가총액"] >= config.CAP_LARGE),
+            ("중형주", (cap["시가총액"] >= config.CAP_MID) & (cap["시가총액"] < config.CAP_LARGE)),
+            ("소형주", cap["시가총액"] < config.CAP_MID),
+        ]
+        for label, mask in buckets:
+            grp = cap[mask]
+            out["caps"].append({
+                "label": label,
+                "count": int(len(grp)),
+                "avg_rate": round(float(grp["등락률"].mean()), 2) if len(grp) else 0.0,
+                "up_pct": round(float((grp["등락률"] > 0).mean() * 100), 1) if len(grp) else 0.0,
+            })
+
+    if len(sub):
+        out["limit_up"] = int((sub["등락률"] >= config.LIMIT_UP_RATE).sum())
+        out["limit_down"] = int((sub["등락률"] <= config.LIMIT_DOWN_RATE).sum())
+
+    if "거래대금" in sub.columns and "시가총액" in sub.columns and len(sub):
+        cap_total = pd.to_numeric(sub["시가총액"], errors="coerce").sum()
+        val_total = pd.to_numeric(sub["거래대금"], errors="coerce").sum()
+        if cap_total and cap_total > 0:
+            out["turnover"] = round(float(val_total / cap_total) * 100, 2)
+
+    return out
+
+
+def market_diagnosis(df):
+    """시장별(코스피/코스닥) 진단: 시총 구간별 강도 + 상한가/하한가 + 거래대금 회전율.
+
+    - 시총 구간(대형/중형/소형)별 종목 수·평균 등락률 → '오늘 누가 끌고 갔나'.
+    - 상한가/하한가 근접 종목 수 → 과열/패닉 신호.
+    - 회전율 = 거래대금 / 시가총액 → 시장의 손바뀜 정도.
+    보통주 기준(ETF/우선주 등 제외). config.MARKETS 별로 나눠서 반환한다.
+    """
+    base = _summary_universe(df)
+    return {m: _diagnose_one(base[base["시장"] == m]) for m in config.MARKETS}
+
+
 def build_tiers(df, common_only=False):
     """티어이름 → 정렬된 DataFrame 딕셔너리 반환.
 

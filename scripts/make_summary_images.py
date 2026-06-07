@@ -44,7 +44,7 @@ CHROME_CANDIDATES = [
 
 # (출력파일명, 남길 섹션 id 들, 카드 부제)
 CARDS = [
-    ("summary-1", ["sec-market", "sec-money", "sec-volume"], "시장 요약 · 거래대금/거래량 Top30"),
+    ("summary-1", ["sec-market", "sec-diagnosis", "sec-money", "sec-volume"], "시장 요약 · 거래대금/거래량 Top30"),
     ("summary-2", ["sec-tiers"], "종목 Tier"),
     ("summary-3", ["sec-sector"], "섹터 Tier"),
 ]

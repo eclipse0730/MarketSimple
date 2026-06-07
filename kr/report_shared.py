@@ -187,6 +187,68 @@ def _section_market(by_market):
     </section>"""
 
 
+def _info(text):
+    """ⓘ 아이콘 + 툴팁. 데스크톱은 hover, 모바일은 탭(focus)으로 뜬다.
+    tabindex 로 모바일에서도 focus 가능, role=button + aria-label 로 접근성 확보."""
+    safe = escape(text)
+    return (f'<span class="dg-info" tabindex="0" role="button" aria-label="{safe}">ⓘ'
+            f'<span class="dg-tip" role="tooltip">{safe}</span></span>')
+
+
+def _diagnosis_block(market, d):
+    """한 시장(코스피/코스닥)의 진단 블록: 시총 카드 3개 + 과열 신호 칩."""
+    cap_cards = ""
+    for c in d.get("caps", []):
+        cls = _cls(c["avg_rate"])
+        cap_cards += f"""
+          <div class="dg-cap">
+            <div class="dg-cap-label">{c['label']}</div>
+            <div class="dg-cap-rate mono {cls}">{_fmt(c['avg_rate'])}%</div>
+            <div class="dg-cap-sub">{c['count']:,}종목 · 상승 {c['up_pct']}%</div>
+          </div>"""
+
+    chips = []
+    if d.get("limit_up") is not None:
+        chips.append(f'<span class="dg-chip"><span>상한가 근접</span>'
+                     f'<b class="mono up">{d["limit_up"]}</b></span>')
+    if d.get("limit_down") is not None:
+        chips.append(f'<span class="dg-chip"><span>하한가 근접</span>'
+                     f'<b class="mono down">{d["limit_down"]}</b></span>')
+    if d.get("turnover") is not None:
+        tip = "거래대금 ÷ 시가총액. 그날 시총의 몇 %가 거래됐는지 — 높을수록 거래가 활발(과열·패닉), 낮을수록 한산(관망)."
+        chips.append(f'<span class="dg-chip"><span>회전율 {_info(tip)}</span>'
+                     f'<b class="mono">{d["turnover"]}%</b></span>')
+    signal_row = f'<div class="dg-signals">{"".join(chips)}</div>' if chips else ""
+
+    return f"""
+      <div class="dg-block">
+        <div class="dg-block-head">{market}</div>
+        <div class="dg-caps">{cap_cards}</div>
+        {signal_row}
+      </div>"""
+
+
+def _section_diagnosis(diag):
+    """시장 진단: 코스피/코스닥별 시총 구간 강도 + 과열 신호(상한가·하한가·회전율)."""
+    if not diag:
+        return ""
+    # 시총 카드가 하나라도 있는 시장만 렌더(데이터 없으면 섹션 자체 생략)
+    blocks = "".join(
+        _diagnosis_block(m, diag[m])
+        for m in config.MARKETS
+        if diag.get(m) and diag[m].get("caps")
+    )
+    if not blocks:
+        return ""
+
+    return f"""
+    <section class="reveal" id="sec-diagnosis">
+      <div class="sec-head">{_section_icon("market", "시장 진단")}<h2>시장 진단</h2>
+        <span class="sec-note">시가총액 구간별 평균 등락률 · 보통주 기준</span></div>
+      <div class="dg-markets">{blocks}</div>
+    </section>"""
+
+
 def _tier_rows(tiers, theme):
     rows = ""
     for name, lo, hi in config.TIERS:
@@ -589,9 +651,10 @@ def _date_nav_html(date_str, date_nav):
     )
 
 
-def write_html(path, *, date_str, session, generated_at, overall, by_market, tiers, top=None, bottom=None, sector_top=None, sector_bottom=None, sector_tiers=None, sector_market_avg=None, big_theme=None, top_value=None, top_value_common=None, top_volume=None, top_volume_common=None, tiers_common=None, date_nav=None, theme_name=DEFAULT_THEME):
+def write_html(path, *, date_str, session, generated_at, overall, by_market, tiers, diagnosis=None, top=None, bottom=None, sector_top=None, sector_bottom=None, sector_tiers=None, sector_market_avg=None, big_theme=None, top_value=None, top_value_common=None, top_volume=None, top_volume_common=None, tiers_common=None, date_nav=None, theme_name=DEFAULT_THEME):
     theme = get_theme(theme_name)
     body = _section_market(by_market)
+    body += _section_diagnosis(diagnosis)
     #body += _section_heatmap(big_theme)
     body += _section_top_value(top_value, top_value_common)
     body += _section_top_volume(top_volume, top_volume_common)
@@ -726,6 +789,42 @@ _PAGE = """<!doctype html>
   .seg.flat {{ background:var(--flat); opacity:.48; }}
 
   /* market cards */
+  /* 시장 진단: 코스피/코스닥 2블록, 각 블록 = 시총 카드 3개 + 과열 신호 칩 */
+  .dg-markets {{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }}
+  .dg-block {{ padding:16px 16px 14px; border-radius:20px; min-width:0;
+              background:linear-gradient(180deg,var(--panel2),var(--panel));
+              border:1px solid var(--line); }}
+  .dg-block-head {{ font-family:var(--round); font-size:14px; font-weight:800;
+                   color:var(--heading); margin-bottom:12px; }}
+  .dg-caps {{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }}
+  .dg-cap {{ padding:14px 10px; border-radius:14px; text-align:center; min-width:0;
+             background:var(--panel); border:1px solid var(--line); }}
+  .dg-cap-label {{ font-family:var(--round); font-size:12.5px; font-weight:800;
+                   color:var(--sub); margin-bottom:6px; }}
+  .dg-cap-rate {{ font-size:22px; font-weight:800; line-height:1; }}
+  .dg-cap-sub {{ margin-top:7px; font-size:11px; color:var(--faint); font-weight:600; }}
+  .dg-signals {{ display:flex; flex-wrap:wrap; gap:10px; margin-top:12px; }}
+  .dg-chip {{ display:flex; align-items:center; gap:7px; padding:8px 12px; border-radius:12px;
+              background:var(--panel); border:1px solid var(--line);
+              font-family:var(--round); font-size:11.5px; font-weight:700; color:var(--sub); }}
+  .dg-chip b {{ font-size:13px; font-weight:800; color:var(--heading); }}
+  /* ⓘ 툴팁 — 데스크톱 hover / 모바일 탭(focus) 양쪽에서 표시 */
+  .dg-info {{ position:relative; display:inline-flex; align-items:center; justify-content:center;
+              width:14px; height:14px; margin-left:3px; border-radius:50%; cursor:help;
+              font-size:9.5px; font-weight:800; color:var(--faint); outline:none;
+              vertical-align:middle; }}
+  .dg-tip {{ position:absolute; bottom:140%; left:50%; transform:translateX(-50%) translateY(4px);
+             width:max-content; max-width:220px; padding:9px 11px; border-radius:10px;
+             background:var(--heading); color:var(--panel); font-family:var(--round);
+             font-size:11px; font-weight:600; line-height:1.5; letter-spacing:0;
+             box-shadow:0 8px 24px rgba(0,0,0,.22); text-align:left; white-space:normal;
+             opacity:0; visibility:hidden; transition:opacity .15s ease, transform .15s ease;
+             z-index:30; pointer-events:none; }}
+  .dg-tip::after {{ content:""; position:absolute; top:100%; left:50%; transform:translateX(-50%);
+             border:5px solid transparent; border-top-color:var(--heading); }}
+  .dg-info:hover .dg-tip, .dg-info:focus .dg-tip {{
+             opacity:1; visibility:visible; transform:translateX(-50%) translateY(0); }}
+
   .mkt-grid {{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }}
   /* 시장 카드 안 상승/보합/하락 카드 (지수 밑, 컴팩트) */
   .mkt-metrics {{ gap:8px; margin:0; }}
@@ -967,6 +1066,11 @@ _PAGE = """<!doctype html>
     .m-value {{ font-size:20px; gap:4px; }}
     .m-pct {{ font-size:10.5px; }}
     .mkt-grid {{ grid-template-columns:1fr; }}
+    .dg-markets {{ grid-template-columns:1fr; }}
+    .dg-caps {{ gap:7px; }}
+    .dg-cap {{ padding:12px 6px; border-radius:12px; }}
+    .dg-cap-rate {{ font-size:18px; }}
+    .dg-cap-sub {{ font-size:10px; }}
     .heatmap {{ grid-template-columns:repeat(2,1fr); gap:7px; }}
     .heat-cell {{ min-height:78px; padding:12px 12px 11px; }}
     .heat-cell .h-val {{ font-size:20px; }}

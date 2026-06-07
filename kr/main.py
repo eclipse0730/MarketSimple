@@ -276,6 +276,7 @@ def main(argv=None):
     overall, by_market = analyzer.market_strength(df)
     by_market = attach_market_indices(by_market, data_collector, date_str, bool(args.date))
     by_market = attach_market_flows(by_market, data_collector, date_str, bool(args.date))
+    diagnosis = analyzer.market_diagnosis(df)
     tiers = analyzer.build_tiers(df)
     tiers_common = analyzer.build_tiers(df, common_only=True)
     top_value = analyzer.top_trading_value(df, n=30)
@@ -313,6 +314,7 @@ def main(argv=None):
         generated_at=datetime.now().strftime("%Y-%m-%d %H:%M"),
         overall=overall,
         by_market=by_market,
+        diagnosis=diagnosis,
         tiers=tiers,
         tiers_common=tiers_common,
         sector_tiers=sector_tiers,
