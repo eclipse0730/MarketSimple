@@ -175,6 +175,44 @@ def market_diagnosis(df, prev_df=None):
     return result
 
 
+def diagnosis_members(df):
+    """시장 진단 카드/신호 모달에 표시할 보통주 기준 종목 리스트를 만든다."""
+    base = _summary_universe(df)
+    if "시가총액" not in base.columns or not len(base):
+        return {}
+
+    cap = base.copy()
+    cap["시가총액"] = pd.to_numeric(cap["시가총액"], errors="coerce")
+    cap = cap.dropna(subset=["시가총액"])
+
+    def rows(sub):
+        sub = sub.sort_values("등락률", ascending=False)
+        return [
+            {
+                "code": str(r.종목코드).zfill(6),
+                "name": str(r.종목명),
+                "rate": round(float(r.등락률), 2),
+            }
+            for r in sub.itertuples()
+        ]
+
+    out = {}
+    for market in config.MARKETS:
+        sub = cap[cap["시장"] == market]
+        buckets = [
+            ("대형주", sub["시가총액"] >= config.CAP_LARGE),
+            ("중형주", (sub["시가총액"] >= config.CAP_MID) & (sub["시가총액"] < config.CAP_LARGE)),
+            ("소형주", sub["시가총액"] < config.CAP_MID),
+        ]
+        for label, mask in buckets:
+            out[f"{market} {label}"] = rows(sub[mask])
+
+        market_base = base[base["시장"] == market]
+        out[f"{market} 상한가 근접"] = rows(market_base[market_base["등락률"] >= config.LIMIT_UP_RATE])
+        out[f"{market} 하한가 근접"] = rows(market_base[market_base["등락률"] <= config.LIMIT_DOWN_RATE])
+    return out
+
+
 def build_tiers(df, common_only=False):
     """티어이름 → 정렬된 DataFrame 딕셔너리 반환.
 
@@ -315,13 +353,14 @@ def sector_tier_table(df, sector_map):
     return result, market_avg
 
 
-def big_theme_heatmap(df, big_theme_map):
+def big_theme_heatmap(df, big_theme_map, common_only=False):
     """대테마(17개)별 집계를 히트맵용으로 전부 반환 (강한→약한 정렬).
 
     반환 컬럼: [대테마, 평균등락률, 종목수, 상승, 하락]
     """
+    base = _summary_universe(df) if common_only else df
     bm = big_theme_map[["종목코드", "대테마"]]
-    merged = df.merge(bm, on="종목코드", how="inner")
+    merged = base.merge(bm, on="종목코드", how="inner")
     grp = (
         merged.groupby("대테마")
         .agg(
@@ -336,13 +375,14 @@ def big_theme_heatmap(df, big_theme_map):
     return grp.sort_values("평균등락률", ascending=False).reset_index(drop=True)
 
 
-def group_members(df, group_map, col):
+def group_members(df, group_map, col, common_only=False):
     """섹터/대테마별 상세 모달에 표시할 종목 리스트를 만든다."""
     if group_map is None or not len(group_map):
         return {}
 
+    base = _summary_universe(df) if common_only else df
     gm = group_map[["종목코드", col]].copy()
-    merged = df[["종목코드", "종목명", "등락률"]].merge(gm, on="종목코드", how="inner")
+    merged = base[["종목코드", "종목명", "등락률"]].merge(gm, on="종목코드", how="inner")
     merged = merged.sort_values("등락률", ascending=False)
 
     out = {}

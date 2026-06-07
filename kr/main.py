@@ -14,6 +14,7 @@ import re
 import sys
 import time
 from datetime import datetime
+from html import unescape
 
 import pandas as pd
 
@@ -87,6 +88,94 @@ def load_big_theme_map():
     return big
 
 
+def _to_float_text(text):
+    text = unescape(str(text)).replace(",", "").replace("%", "").replace("억", "").strip()
+    if text in ("", "N/A"):
+        return None
+    try:
+        return float(text)
+    except ValueError:
+        return None
+
+
+def load_local_market_indices(date_str: str):
+    """네이버 지수 수집 실패 시 같은 날짜 로컬 HTML에서 지수 값을 복구한다."""
+    candidates = [
+        os.path.join("docs", config.MARKET_KEY, date_str, "index.html"),
+        os.path.join(config.OUTPUT_DIR, config.REPORT_OUTPUT_DIR, config.report_filename(date_str)),
+    ]
+    block_re = re.compile(
+        r"<h3>(KOSPI|KOSDAQ)</h3>.*?"
+        r'<span class="mkt-index mono">([^<]+)</span>.*?'
+        r'<span class="mkt-rate mono [^"]+">([^<]+)</span>.*?'
+        r'<span class="mkt-change mono [^"]+">([^<]+)</span>',
+        re.S,
+    )
+
+    for path in candidates:
+        if not os.path.exists(path):
+            continue
+        try:
+            with open(path, encoding="utf-8") as f:
+                html = f.read()
+        except OSError:
+            continue
+
+        indices = {}
+        for market, value, rate, change in block_re.findall(html):
+            parsed = {
+                "value": _to_float_text(value),
+                "rate": _to_float_text(rate),
+                "change": _to_float_text(change),
+            }
+            if all(v is not None for v in parsed.values()):
+                indices[market] = parsed
+        if indices:
+            print(f"  · [안내] 로컬 HTML 지수값 사용: {path}")
+            return indices
+    return {}
+
+
+def load_local_market_flows(date_str: str):
+    """네이버 수급 수집 실패 시 같은 날짜 로컬 HTML에서 투자자별 수급을 복구한다."""
+    candidates = [
+        os.path.join("docs", config.MARKET_KEY, date_str, "index.html"),
+        os.path.join(config.OUTPUT_DIR, config.REPORT_OUTPUT_DIR, config.report_filename(date_str)),
+    ]
+    card_re = re.compile(
+        r'<div class="mkt-card">.*?<h3>(KOSPI|KOSDAQ)</h3>.*?'
+        r'<div class="mkt-flow">(.*?)</div>',
+        re.S,
+    )
+    item_re = re.compile(
+        r'<span class="flow-item"><span>(기관|외인|개인)</span>'
+        r'<b class="mono [^"]+">([^<]+)</b></span>',
+        re.S,
+    )
+    key_map = {"기관": "institution", "외인": "foreign", "개인": "personal"}
+
+    for path in candidates:
+        if not os.path.exists(path):
+            continue
+        try:
+            with open(path, encoding="utf-8") as f:
+                html = f.read()
+        except OSError:
+            continue
+
+        flows = {}
+        for market, flow_html in card_re.findall(html):
+            parsed = {}
+            for label, value in item_re.findall(flow_html):
+                parsed[key_map[label]] = _to_float_text(value)
+            if parsed:
+                flows[market] = parsed
+        if flows:
+            print(f"  · [안내] 로컬 HTML 수급값 사용: {path}")
+            return flows
+    return {}
+
+
 def attach_market_indices(by_market, collector_module, date_str: str, historical: bool):
     if not hasattr(collector_module, "collect_market_indices"):
         return by_market
@@ -95,7 +184,9 @@ def attach_market_indices(by_market, collector_module, date_str: str, historical
         indices = collector_module.collect_market_indices(date_str, historical=historical)
     except Exception as exc:
         print(f"  · [안내] 시장 지수 수집 실패: {exc}")
-        return by_market
+        indices = load_local_market_indices(date_str)
+        if not indices:
+            return by_market
 
     for market, values in indices.items():
         if market in by_market:
@@ -115,7 +206,9 @@ def attach_market_flows(by_market, collector_module, date_str: str, historical: 
         flows = collector_module.collect_market_flows(date_str, historical=historical)
     except Exception as exc:
         print(f"  · [안내] 투자자별 수급 수집 실패: {exc}")
-        return by_market
+        flows = load_local_market_flows(date_str)
+        if not flows:
+            return by_market
 
     for market, values in flows.items():
         if market in by_market:
@@ -304,12 +397,15 @@ def main(argv=None):
 
     big_theme_map = load_big_theme_map()
     big_theme = analyzer.big_theme_heatmap(df, big_theme_map) if len(big_theme_map) else None
+    big_theme_common = analyzer.big_theme_heatmap(df, big_theme_map, common_only=True) if len(big_theme_map) else None
     if big_theme is not None:
-        print(f"  · 대테마: {len(big_theme)}개 / 매핑 종목 {len(big_theme_map):,}")
+        print(f"  · 대테마: {len(big_theme)}개 / 보통주 {len(big_theme_common)}개 / 매핑 종목 {len(big_theme_map):,}")
 
     group_members = {
+        "diagnosis": analyzer.diagnosis_members(df),
         "sector": analyzer.group_members(df, sector_map, "섹터") if len(sector_map) else {},
         "big": analyzer.group_members(df, big_theme_map, "대테마") if len(big_theme_map) else {},
+        "big_common": analyzer.group_members(df, big_theme_map, "대테마", common_only=True) if len(big_theme_map) else {},
     }
 
     # 3) 출력
@@ -328,6 +424,7 @@ def main(argv=None):
         sector_tiers=sector_tiers,
         sector_market_avg=sector_market_avg,
         big_theme=big_theme,
+        big_theme_common=big_theme_common,
         group_members=group_members,
         top_value=top_value,
         top_value_common=top_value_common,

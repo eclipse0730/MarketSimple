@@ -11,7 +11,7 @@
       "active": true,
       "autoOpen": true,
       "ariaButton": "공지 보기",
-      "title": "안녕하세요!",
+      "title": "공지사항🔔",
       "restoreColor": "#a9744f",
       "bubbleWidth": 220,
       "bubbleFontSize": 12,
@@ -19,7 +19,7 @@
       "bubbleWidthMobile": 190,
       "bubbleFontSizeMobile": 11,
       "bubbleOffsetMobile": { "x": 0, "y": 12 },
-      "defaultMessage": "이번주 장이 끝났어요! 좋은 주말 보내시고 다음주에 또 만나요!",
+      "defaultMessage": "업데이트 내용이 있어요! 저를 눌러 확인해보세요",
       "byMarket": {
         "up": [
           "오늘은 빨간불이 많네요, 상승장이에요! 📈",
@@ -48,7 +48,10 @@
         ]
       },
       "messages": [
-        "마켓 정보는 30분마다 업데이트 됩니다!",
+        "테마변경이 생겼어요! 시바를 클릭",
+        "상세 종목 리스트가 추가되었어요!",
+        "대테마 히트맵이 추가되었어요!",
+        "마켓 정보는 09:10부터 30분마다 업데이트 됩니다!",
         "오늘은 거래대금부터 살펴볼까요? 📊",
         "거래량 급증 종목은 과열도 함께 확인해요 🔥",
         "왼쪽 위 화살표로 다른 날짜도 볼 수 있어요 📅",

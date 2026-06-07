@@ -241,16 +241,16 @@
     if (h >= 14 && h < 18) return "afterClose";
     return "night";
   }
-  // 공지 대사 풀: byMarket[추세] → byTime[시간대] → messages 순으로 합친다.
-  // 앞쪽일수록 더 맥락적(자동 노출 시 첫 문구). 빈 배열/누락은 건너뛴다.
+  // 공지 대사 풀: messages → byMarket[추세] → byTime[시간대] 순으로 합친다.
+  // messages 앞쪽은 자동 노출 시 첫 문구로 쓰기 좋다. 빈 배열/누락은 건너뛴다.
   function noticeMessages(c) {
     var ctx = window.__MB_CTX || {};
     var pool = [];
+    if (Array.isArray(c.messages)) pool = pool.concat(c.messages);
     var bm = c.byMarket && ctx.trend ? c.byMarket[ctx.trend] : null;
     if (Array.isArray(bm)) pool = pool.concat(bm);
     var bt = c.byTime ? c.byTime[timeKey()] : null;
     if (Array.isArray(bt)) pool = pool.concat(bt);
-    if (Array.isArray(c.messages)) pool = pool.concat(c.messages);
     return pool.length ? pool : null;
   }
 

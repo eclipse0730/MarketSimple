@@ -3,6 +3,7 @@
 
 import json
 from html import escape
+from pathlib import Path
 from urllib.parse import quote
 
 from . import config
@@ -18,6 +19,16 @@ ARROWS = {
 
 TIER_COLLAPSE_LIMIT = 30
 TIER_COLLAPSE_LIMITS = {"B": 10, "C": 10, "D": 10, "E": 10}
+
+_REPORT_DIR = Path(__file__).resolve().parent
+
+
+def _read_text(path):
+    return path.read_text(encoding="utf-8")
+
+
+def _script_tag(js):
+    return f"<script>\n{js.rstrip()}\n</script>"
 
 
 def write_csv(df, path):
@@ -139,13 +150,11 @@ def _section_icon(name, label):
 # sections
 # ──────────────────────────────────────────────
 def _metric_cards(c):
-    """시장별 상승/보합/하락 카드. 상승/하락은 전일 대비(▲▼)를 라벨 옆에 표시."""
-    up_delta = _delta(c.get("up_delta"))
-    down_delta = _delta(c.get("down_delta"))
+    """시장별 상승/보합/하락 카드."""
     return f"""
           <div class="metrics mkt-metrics">
             <div class="metric up-card">
-              <div class="m-label up">상승 {up_delta}</div>
+              <div class="m-label up">상승</div>
               <div class="m-value mono up">{c['up']:,}<span class="m-pct">{c['up_pct']}%</span></div>
             </div>
             <div class="metric flat-card">
@@ -153,7 +162,7 @@ def _metric_cards(c):
               <div class="m-value mono flat">{c['flat']:,}<span class="m-pct">{c['flat_pct']}%</span></div>
             </div>
             <div class="metric down-card">
-              <div class="m-label down">하락 {down_delta}</div>
+              <div class="m-label down">하락</div>
               <div class="m-value mono down">{c['down']:,}<span class="m-pct">{c['down_pct']}%</span></div>
             </div>
           </div>"""
@@ -219,8 +228,9 @@ def _diagnosis_block(market, d):
     cap_cards = ""
     for c in d.get("caps", []):
         cls = _cls(c["avg_rate"])
+        key = escape(f"{market} {c['label']}", quote=True)
         cap_cards += f"""
-          <div class="dg-cap">
+          <div class="dg-cap gm-open" role="button" tabindex="0" data-gkind="diagnosis" data-gkey="{key}">
             <div class="dg-cap-label">{c['label']}</div>
             <div class="dg-cap-rate mono {cls}">{_fmt(c['avg_rate'])}%</div>
             <div class="dg-cap-sub">{c['count']:,}종목 · 상승 {c['up_pct']}%</div>
@@ -228,10 +238,12 @@ def _diagnosis_block(market, d):
 
     chips = []
     if d.get("limit_up") is not None:
-        chips.append(f'<span class="dg-chip"><span>상한가 근접</span>'
+        key = escape(f"{market} 상한가 근접", quote=True)
+        chips.append(f'<span class="dg-chip gm-open" role="button" tabindex="0" data-gkind="diagnosis" data-gkey="{key}"><span>상한가 근접</span>'
                      f'<b class="mono up">{d["limit_up"]}</b></span>')
     if d.get("limit_down") is not None:
-        chips.append(f'<span class="dg-chip"><span>하한가 근접</span>'
+        key = escape(f"{market} 하한가 근접", quote=True)
+        chips.append(f'<span class="dg-chip gm-open" role="button" tabindex="0" data-gkind="diagnosis" data-gkey="{key}"><span>하한가 근접</span>'
                      f'<b class="mono down">{d["limit_down"]}</b></span>')
     if d.get("turnover") is not None:
         tip = "거래대금 ÷ 시가총액. 그날 시총의 몇 %가 거래됐는지 — 높을수록 거래가 활발(과열·패닉), 낮을수록 한산(관망)."
@@ -531,31 +543,42 @@ def _heat_style(rate):
     )
 
 
-def _heat_card(r):
+def _heat_card(r, group_kind="big"):
     name = escape(str(r.대테마))
     return f"""
         <div class="heat-cell gm-open {_cls(r.평균등락률)}" role="button" tabindex="0"
-             data-gkind="big" data-gkey="{name}" style="{_heat_style(r.평균등락률)}">
+             data-gkind="{group_kind}" data-gkey="{name}" style="{_heat_style(r.평균등락률)}">
           <span class="h-name">{r.대테마}</span>
           <span class="h-val mono">{_fmt(r.평균등락률)}%</span>
           <span class="h-sub">{r.종목수}종목 · ▲{r.상승} ▼{r.하락}</span>
         </div>"""
 
 
-def _section_heatmap(big_theme):
+def _section_heatmap(big_theme, big_theme_common=None):
     if big_theme is None or not len(big_theme):
         return ""
-    cells = "".join(_heat_card(r) for r in big_theme.itertuples())
+    all_cells = "".join(_heat_card(r, "big") for r in big_theme.itertuples())
+
+    if big_theme_common is not None and len(big_theme_common):
+        common_cells = "".join(_heat_card(r, "big_common") for r in big_theme_common.itertuples())
+        toggle, switch = _rep_switch("bigThemeToggle")
+        common_block = f'<div class="heatmap heatmap-common">{common_cells}</div>'
+        all_class = "heatmap heatmap-all"
+    else:
+        toggle = switch = common_block = ""
+        all_class = "heatmap"
+
     return f"""
-    <section class="reveal">
-      <div class="sec-head">{_section_icon("heat", "대테마 히트맵")}<h2>대테마 히트맵</h2>
-        <span class="sec-note">평균 등락률 · 강한 → 약한</span></div>
-      <div class="heatmap">{cells}</div>
+    <section class="reveal" id="sec-big-theme">
+      {toggle}
+      <div class="sec-head">{_section_icon("heat", "대테마 히트맵")}<h2>대테마 히트맵</h2>{switch}</div>
+      {common_block}
+      <div class="{all_class}">{all_cells}</div>
     </section>"""
 
 
 def _group_modal_html(group_members):
-    data = group_members or {"sector": {}, "big": {}}
+    data = group_members or {"diagnosis": {}, "sector": {}, "big": {}, "big_common": {}}
     payload = json.dumps(data, ensure_ascii=False)
     return f"""
     <script id="mb-group-data" type="application/json">{payload}</script>
@@ -615,13 +638,14 @@ def _market_ctx(date_str, session, overall):
 def _mascots_html(ctx=None):
     if not config.MASCOT_ENABLED:
         return ""
-    js_url = "/mascot/mascots.js"
-    base = config.SITE_BASE_URL
-    if base and js_url.startswith("/"):
-        js_url = base + js_url
+    try:
+        mascot_version = int((_REPORT_DIR.parent / "mascot" / "mascots.js").stat().st_mtime)
+        js_url = f"/mascot/mascots.js?v={mascot_version}"
+    except OSError:
+        js_url = "/mascot/mascots.js"
     cfg = {
         "url": config.CHARACTERS_JSON_PATH,
-        "base": base,
+        "base": "",
         "key": config.WEB3FORMS_KEY,
     }
     cfg_json = json.dumps(cfg, ensure_ascii=False)
@@ -696,7 +720,7 @@ def _date_nav_html(date_str, date_nav):
     )
 
 
-def write_html(path, *, date_str, session, generated_at, overall, by_market, tiers, diagnosis=None, top=None, bottom=None, sector_top=None, sector_bottom=None, sector_tiers=None, sector_market_avg=None, big_theme=None, group_members=None, top_value=None, top_value_common=None, top_volume=None, top_volume_common=None, tiers_common=None, date_nav=None, theme_name=DEFAULT_THEME):
+def write_html(path, *, date_str, session, generated_at, overall, by_market, tiers, diagnosis=None, top=None, bottom=None, sector_top=None, sector_bottom=None, sector_tiers=None, sector_market_avg=None, big_theme=None, big_theme_common=None, group_members=None, top_value=None, top_value_common=None, top_volume=None, top_volume_common=None, tiers_common=None, date_nav=None, theme_name=DEFAULT_THEME):
     theme = get_theme(theme_name)
     body = _section_market(by_market)
     body += _section_diagnosis(diagnosis)
@@ -705,7 +729,7 @@ def write_html(path, *, date_str, session, generated_at, overall, by_market, tie
     body += _section_tiers(tiers, theme, tiers_common)
     if sector_tiers:
         body += _section_sector_tiers(sector_tiers, sector_market_avg, theme)
-    body += _section_heatmap(big_theme)
+    body += _section_heatmap(big_theme, big_theme_common)
     body += _group_modal_html(group_members)
     html = _PAGE.format(
         date=_date_label(date_str),
@@ -719,650 +743,18 @@ def write_html(path, *, date_str, session, generated_at, overall, by_market, tie
         market_subtitle=config.MARKET_SUBTITLE,
         year=date_str[:4],
         themes_css=all_themes_css(theme_name),
+        report_css=_REPORT_CSS,
         default_theme=theme_name,
         theme_ids_json=json.dumps(theme_ids(), ensure_ascii=False),
+        group_modal_js=_GROUP_MODAL_JS,
         body=body,
     )
     with open(path, "w", encoding="utf-8") as f:
         f.write(html)
 
 
-_PAGE = """<!doctype html>
-<html lang="ko" data-theme="{default_theme}">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Market Brief — {date} {session_label}</title>
-<script>
-  // 사용 가능한 테마 목록 + 기본값. 카멜레온(테마 캐릭터)과 아래 폴백 스크립트가 공유.
-  window.__MB_THEMES={{"list":{theme_ids_json},"def":"{default_theme}"}};
-  // FOUC 방지: 저장된 테마를 그리기 전에 곧바로 적용(목록에 있는 값만).
-  (function(){{try{{var t=localStorage.getItem("mb_theme");
-    if(t&&window.__MB_THEMES.list.indexOf(t)>=0)
-      document.documentElement.setAttribute("data-theme",t);
-  }}catch(e){{}}}})();
-</script>
-{og_tags}
-{ga}
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=Quicksand:wght@400;500;600;700&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
-<style>
-{themes_css}
-  * {{ box-sizing:border-box; }}
-  html {{ scroll-behavior:smooth; }}
-  body {{
-    margin:0; color:var(--ink);
-    background:var(--body-bg);
-    font-family:var(--sans); line-height:1.6; -webkit-font-smoothing:antialiased;
-    letter-spacing:.005em;
-  }}
-  .wrap {{ max-width:1040px; margin:0 auto; padding:44px 24px 80px; }}
-  .mono {{ font-family:var(--round); font-weight:600; font-variant-numeric:tabular-nums; }}
-  .up {{ color:var(--up); }} .down {{ color:var(--down); }} .flat {{ color:var(--flat); }}
-
-  /* 날짜 이동 바 */
-  .date-nav {{ display:flex; align-items:center; justify-content:center; gap:10px;
-               margin-top:18px; }}
-  .date-nav-cur {{ min-width:118px; text-align:center; font-size:14.5px; font-weight:800;
-                   color:var(--heading); letter-spacing:.02em;
-                   padding:7px 16px; border-radius:999px;
-                   background:var(--accent-soft); }}
-  .date-nav-btn {{ display:inline-flex; align-items:center; justify-content:center;
-                   width:34px; height:34px; border-radius:50%;
-                   border:1px solid var(--line); background:var(--panel);
-                   color:var(--sub); text-decoration:none;
-                   transition:background .15s ease, color .15s ease, transform .12s ease;
-                   box-shadow:var(--section-shadow); }}
-  .date-nav-btn svg {{ width:18px; height:18px; fill:none; stroke:currentColor;
-                       stroke-width:2.2; stroke-linecap:round; stroke-linejoin:round; }}
-  .date-nav-btn:hover {{ background:var(--accent); color:#fff; transform:translateY(-1px); }}
-  .date-nav-btn.is-disabled {{ opacity:.32; pointer-events:none; box-shadow:none; }}
-
-  /* header */
-  header {{ position:relative; margin-bottom:34px; padding-bottom:24px; text-align:center; }}
-  header::after {{ content:""; position:absolute; left:50%; bottom:0; transform:translateX(-50%);
-                   width:80px; height:3px; border-radius:3px;
-                   background:linear-gradient(90deg,var(--up),var(--accent),var(--down)); }}
-  .brand {{ display:inline-flex; align-items:center; gap:9px; margin-bottom:16px;
-            padding:6px 16px; background:var(--accent-soft); border-radius:999px; }}
-  .brand .dot {{ width:7px; height:7px; border-radius:50%; background:var(--accent);
-                 animation:pulse 2.6s ease-in-out infinite; }}
-  .brand .kicker {{ font-family:var(--round); font-size:11px; letter-spacing:.24em;
-                    color:var(--accent); text-transform:uppercase; font-weight:700; }}
-  header h1 {{ font-family:var(--serif); font-weight:700; font-size:44px; line-height:1.1;
-               margin:0 0 16px; letter-spacing:-.01em; color:var(--heading); }}
-  header h1 em {{ font-style:normal; color:var(--accent);
-                  background:linear-gradient(120deg,var(--up),var(--accent));
-                  -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }}
-  .meta-row {{ display:inline-flex; flex-wrap:wrap; justify-content:center; gap:8px 18px;
-               font-family:var(--round); font-size:12.5px; color:var(--sub); font-weight:600; }}
-  .meta-row b {{ color:var(--ink); }}
-  .meta-row .sep {{ color:var(--faint); }}
-
-  /* sections */
-  section {{ background:var(--panel); border:1px solid var(--line);
-             border-radius:24px; padding:26px 28px; margin-bottom:20px; position:relative;
-             box-shadow:var(--section-shadow); }}
-  .sec-head {{ display:flex; align-items:center; gap:12px; margin-bottom:22px; min-width:0; }}
-  .num {{ font-family:var(--round); font-size:12px; font-weight:700; color:#fff;
-          background:linear-gradient(135deg,var(--accent),var(--up));
-          border-radius:50%; width:28px; height:28px; display:flex; align-items:center;
-          justify-content:center; letter-spacing:0; box-shadow:0 3px 8px rgba(217,138,168,.3); }}
-  .num svg {{ width:17px; height:17px; fill:none; stroke:currentColor; stroke-width:2.05;
-              stroke-linecap:round; stroke-linejoin:round; }}
-  .sec-head h2 {{ font-family:var(--serif); font-weight:700; font-size:22px; margin:0;
-                  letter-spacing:-.01em; color:var(--heading); }}
-  .sec-note {{ margin-left:auto; font-family:var(--round); font-size:11.5px;
-               color:var(--sub); letter-spacing:.03em; font-weight:600; }}
-
-  /* summary */
-  .metrics {{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; margin-bottom:20px; }}
-  .metric {{ padding:18px 18px; border-radius:18px; text-align:center;
-             min-width:0; overflow:hidden;
-             background:linear-gradient(180deg,var(--panel2),var(--panel)); border:1px solid var(--line); }}
-  .metric.up-card {{ background:linear-gradient(180deg,var(--up-soft),var(--panel)); border-color:var(--up-mid); }}
-  .metric.down-card {{ background:linear-gradient(180deg,var(--down-soft),var(--panel)); border-color:var(--down-mid); }}
-  .m-label {{ font-size:12px; color:var(--sub); margin-bottom:8px; letter-spacing:.02em; font-weight:700; }}
-  .m-value {{ font-size:28px; font-weight:800; line-height:1; display:flex;
-              align-items:baseline; gap:7px; justify-content:center; min-width:0; flex-wrap:wrap; }}
-  .m-pct {{ font-size:13px; font-weight:600; opacity:.8; white-space:nowrap; }}
-  .bar {{ display:flex; height:14px; border-radius:999px; overflow:hidden;
-          background:var(--flat-soft); padding:0; }}
-  .seg {{ height:100%; transition:width 1s cubic-bezier(.16,1,.3,1); }}
-  .seg.up {{ background:linear-gradient(90deg,var(--up),#f6b0c1); }}
-  .seg.down {{ background:linear-gradient(90deg,#b7d0f1,var(--down)); }}
-  .seg.flat {{ background:var(--flat); opacity:.48; }}
-
-  /* market cards */
-  /* 시장 진단: 코스피/코스닥 2블록, 각 블록 = 시총 카드 3개 + 과열 신호 칩 */
-  .dg-markets {{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }}
-  .dg-block {{ padding:16px 16px 14px; border-radius:20px; min-width:0;
-              background:linear-gradient(180deg,var(--panel2),var(--panel));
-              border:1px solid var(--line); }}
-  .dg-block-head {{ font-family:var(--round); font-size:14px; font-weight:800;
-                   color:var(--heading); margin-bottom:12px; }}
-  .dg-caps {{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }}
-  .dg-cap {{ padding:14px 10px; border-radius:14px; text-align:center; min-width:0;
-             background:var(--panel); border:1px solid var(--line); }}
-  .dg-cap-label {{ font-family:var(--round); font-size:12.5px; font-weight:800;
-                   color:var(--sub); margin-bottom:6px; }}
-  .dg-cap-rate {{ font-size:22px; font-weight:800; line-height:1; }}
-  .dg-cap-sub {{ margin-top:7px; font-size:11px; color:var(--faint); font-weight:600; }}
-  .dg-signals {{ display:flex; flex-wrap:wrap; gap:10px; margin-top:12px; }}
-  .dg-chip {{ display:flex; align-items:center; gap:7px; padding:8px 12px; border-radius:12px;
-              background:var(--panel); border:1px solid var(--line);
-              font-family:var(--round); font-size:11.5px; font-weight:700; color:var(--sub); }}
-  .dg-chip b {{ font-size:13px; font-weight:800; color:var(--heading); }}
-  /* ⓘ 툴팁 — 데스크톱 hover / 모바일 탭(focus) 양쪽에서 표시 */
-  .dg-info {{ position:relative; display:inline-flex; align-items:center; justify-content:center;
-              width:14px; height:14px; margin-left:3px; border-radius:50%; cursor:help;
-              font-size:9.5px; font-weight:800; color:var(--faint); outline:none;
-              vertical-align:middle; }}
-  .dg-tip {{ position:absolute; bottom:140%; left:50%; transform:translateX(-50%) translateY(4px);
-             width:max-content; max-width:220px; padding:9px 11px; border-radius:10px;
-             background:var(--heading); color:var(--panel); font-family:var(--round);
-             font-size:11px; font-weight:600; line-height:1.5; letter-spacing:0;
-             box-shadow:0 8px 24px rgba(0,0,0,.22); text-align:left; white-space:normal;
-             opacity:0; visibility:hidden; transition:opacity .15s ease, transform .15s ease;
-             z-index:30; pointer-events:none; }}
-  .dg-tip::after {{ content:""; position:absolute; top:100%; left:50%; transform:translateX(-50%);
-             border:5px solid transparent; border-top-color:var(--heading); }}
-  .dg-info:hover .dg-tip, .dg-info:focus .dg-tip {{
-             opacity:1; visibility:visible; transform:translateX(-50%) translateY(0); }}
-  /* 전일 대비 ▲▼ — 부호 기준 색(증가=상승색, 감소=하락색, 0=중립). 숫자 크기는 작게. */
-  .dg-delta {{ font-family:var(--round); font-size:10.5px; font-weight:800; margin-left:5px;
-              letter-spacing:0; white-space:nowrap; }}
-  .dg-delta.delta-up {{ color:var(--up); }}
-  .dg-delta.delta-down {{ color:var(--down); }}
-  .dg-delta.delta-flat {{ color:var(--faint); }}
-  /* 상승/하락 카드 라벨 옆 delta 는 라벨 톤에 맞춰 조금 더 작게 */
-  .m-label .dg-delta {{ font-size:9.5px; margin-left:4px; }}
-
-  .mkt-grid {{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }}
-  /* 시장 카드 안 상승/보합/하락 카드 (지수 밑, 컴팩트) */
-  .mkt-metrics {{ gap:8px; margin:0; }}
-  .mkt-metrics .metric {{ padding:11px 8px; border-radius:14px; }}
-  .mkt-metrics .m-label {{ font-size:11px; margin-bottom:5px; }}
-  .mkt-metrics .m-value {{ font-size:19px; gap:4px; }}
-  .mkt-metrics .m-pct {{ font-size:10.5px; }}
-  .mkt-card .bar {{ margin-top:13px; }}
-  .mkt-card {{ padding:20px 22px; border-radius:20px;
-              min-width:0; overflow:hidden;
-              background:linear-gradient(180deg,var(--panel2),var(--panel));
-              border:1px solid var(--line); }}
-  .mkt-head {{ display:flex; align-items:baseline; justify-content:space-between; gap:10px 14px; margin-bottom:14px; min-width:0; }}
-  .mkt-head h3 {{ font-family:var(--round); font-size:16px; font-weight:700; margin:0;
-                  letter-spacing:.04em; color:var(--heading); }}
-  .mkt-head-idx {{ display:inline-flex; align-items:baseline; justify-content:flex-end; gap:8px; min-width:0; }}
-  .mkt-index {{ font-size:17px; font-weight:850; color:var(--strong); }}
-  .mkt-index, .mkt-rate, .mkt-change {{ max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }}
-  .mkt-rate {{ font-size:14px; font-weight:800; }}
-  .mkt-change {{ font-size:12px; font-weight:750; }}
-  .mkt-flow {{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px; margin-top:10px; }}
-  .flow-item {{ display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px;
-                min-width:0; padding:8px 6px; border:1px solid var(--line); border-radius:12px;
-                background:color-mix(in srgb, var(--panel) 78%, transparent); font-family:var(--round);
-                font-size:11px; line-height:1.1; font-weight:700; color:var(--sub); text-align:center; }}
-  .flow-item b {{ max-width:100%; overflow:hidden; text-overflow:ellipsis;
-                  font-size:11.5px; font-weight:850; line-height:1.1; white-space:nowrap; }}
-
-  /* tiers */
-  .tier-row {{ display:flex; gap:16px; padding:15px 0 15px 18px; position:relative;
-               border-bottom:1px solid var(--line); }}
-  .tier-row:last-child {{ border-bottom:0; }}
-  .tier-row::before {{ content:""; position:absolute; left:0; top:15px; bottom:15px;
-                       width:4px; border-radius:4px; background:var(--tc); opacity:.9; }}
-  .tier-side {{ flex:0 0 92px; display:flex; flex-direction:column; align-items:flex-start; gap:6px; }}
-  .tier-badge {{ width:40px; height:40px; border-radius:14px; font-family:var(--serif);
-                 font-weight:700; font-size:20px; display:flex; align-items:center;
-                 justify-content:center; color:#fff; }}
-  .tier-badge.t-S {{ background:linear-gradient(145deg,var(--tier-S-1),var(--tier-S-2)); color:var(--tier-S-text); }}
-  .tier-badge.t-A {{ background:linear-gradient(145deg,var(--tier-A-1),var(--tier-A-2)); color:var(--tier-A-text); }}
-  .tier-badge.t-B {{ background:linear-gradient(145deg,var(--tier-B-1),var(--tier-B-2)); color:var(--tier-B-text); }}
-  .tier-badge.t-C {{ background:linear-gradient(145deg,var(--tier-C-1),var(--tier-C-2)); color:var(--tier-C-text); }}
-  .tier-badge.t-D {{ background:linear-gradient(145deg,var(--tier-D-1),var(--tier-D-2)); color:var(--tier-D-text); }}
-  .tier-badge.t-E {{ background:linear-gradient(145deg,var(--tier-E-1),var(--tier-E-2)); color:var(--tier-E-text); }}
-  .tier-badge.t-F {{ background:linear-gradient(145deg,var(--tier-F-1),var(--tier-F-2)); color:var(--tier-F-text); }}
-  .tier-badge.t-G {{ background:linear-gradient(145deg,var(--tier-G-1),var(--tier-G-2)); color:var(--tier-G-text); }}
-  .tier-head {{ display:flex; align-items:center; gap:8px; }}  /* 섹터 티어: 뱃지 + 카운트 한 줄 */
-  .tier-range {{ font-size:10.5px; color:var(--faint); letter-spacing:.01em; font-weight:600; }}
-  .tier-count {{ font-size:11px; color:var(--sub); background:var(--flat-soft);
-                 padding:2px 8px; border-radius:999px; font-weight:700; }}
-  .tier-stocks {{ display:flex; flex-wrap:wrap; gap:7px; align-content:flex-start; padding-top:3px; }}
-  .tier-more {{
-    flex-basis:100%;
-    margin-top:5px;
-  }}
-  .tier-more summary {{
-    display:inline-flex;
-    align-items:center;
-    height:28px;
-    cursor:pointer;
-    color:var(--chip-text);
-    border:1px solid color-mix(in srgb, var(--tc) 52%, var(--chip-base));
-    background:color-mix(in srgb, var(--tc) 18%, var(--chip-base));
-    border-radius:999px;
-    padding:0 12px;
-    font-size:11.5px;
-    list-style:none;
-    user-select:none;
-    box-shadow:0 4px 12px rgba(216,138,168,.10);
-  }}
-  .tier-more summary::-webkit-details-marker {{ display:none; }}
-  .tier-more summary::after {{
-    content:"펼치기";
-    margin-left:8px;
-    color:var(--sub);
-    font-family:var(--sans);
-    font-size:11px;
-    font-weight:700;
-  }}
-  .tier-more[open] summary::after {{ content:"접기"; }}
-  .tier-more-list {{
-    display:flex;
-    flex-wrap:wrap;
-    gap:7px;
-    margin-top:9px;
-    max-height:176px;
-    overflow:auto;
-    padding:2px 4px 5px 0;
-  }}
-  .tier-more-list::-webkit-scrollbar {{ width:8px; height:8px; }}
-  .tier-more-list::-webkit-scrollbar-thumb {{
-    background:color-mix(in srgb, var(--tc) 35%, var(--chip-base));
-    border-radius:999px;
-  }}
-  .chip {{ display:inline-flex; align-items:center; gap:8px; font-size:12.5px; font-weight:600;
-           background:color-mix(in srgb, var(--tc) 14%, var(--chip-base));
-           border:1px solid color-mix(in srgb, var(--tc) 50%, var(--chip-base));
-           color:var(--chip-text);
-           text-decoration:none;
-           border-radius:999px; padding:5px 13px; white-space:nowrap;
-           transition:transform .14s ease, box-shadow .14s ease; }}
-  .chip:hover {{
-    transform:translateY(-2px);
-    box-shadow:0 4px 12px color-mix(in srgb, var(--tc) 24%, transparent);
-  }}
-  .chip .c-name {{ color:var(--chip-name); }}
-  .chip .c-rate {{ color:color-mix(in srgb, var(--tc) 82%, var(--chip-rate-base)); font-size:12px; font-weight:800; }}
-  .empty {{ color:var(--faint); font-size:13px; }}
-
-  /* big-theme heatmap */
-  .heatmap {{ display:grid; grid-template-columns:repeat(auto-fill,minmax(164px,1fr)); gap:10px; }}
-  .heat-cell {{ position:relative; overflow:hidden; border-radius:14px; padding:14px 15px 13px 17px;
-               min-height:88px; display:flex; flex-direction:column; justify-content:center; gap:4px;
-               color:var(--ink);
-               background:
-                 linear-gradient(180deg,
-                   color-mix(in srgb, var(--heat-color) var(--heat-strength), var(--panel)),
-                   color-mix(in srgb, var(--heat-soft) 32%, var(--panel))),
-                 var(--panel);
-               border:1px solid color-mix(in srgb, var(--heat-mid) var(--heat-edge), var(--line));
-               box-shadow:0 2px 10px color-mix(in srgb, var(--heat-color) var(--heat-glow), transparent);
-               transition:transform .15s ease, box-shadow .15s ease, border-color .15s ease; }}
-  .heat-cell::before {{ content:""; position:absolute; left:0; top:0; bottom:0; width:var(--heat-stripe);
-                       background:linear-gradient(180deg,var(--heat-color),var(--heat-mid)); opacity:.9; }}
-  .heat-cell:hover {{ transform:translateY(-2px);
-                     box-shadow:0 7px 20px color-mix(in srgb, var(--heat-color) var(--heat-hover-glow), transparent); }}
-  .heat-cell .h-name {{ position:relative; z-index:1; font-size:13.5px; font-weight:850;
-                       color:var(--heading); letter-spacing:0; }}
-  .heat-cell .h-val {{ position:relative; z-index:1; font-size:22px; font-weight:900;
-                      color:var(--heat-color); letter-spacing:-.02em; line-height:1.08; }}
-  .heat-cell .h-sub {{ position:relative; z-index:1; font-size:11px; font-weight:700;
-                      color:var(--sub); opacity:.9; }}
-
-  /* clickable group chips/cells and member modal */
-  .gm-open {{ cursor:pointer; }}
-  .gm-open:focus-visible {{ outline:2px solid var(--accent); outline-offset:2px; }}
-  .gm-modal {{ position:fixed; inset:0; z-index:200; display:flex;
-               align-items:center; justify-content:center; padding:20px; }}
-  .gm-modal[hidden] {{ display:none; }}
-  .gm-backdrop {{ position:absolute; inset:0; background:rgba(0,0,0,.45);
-                  animation:gmFade .15s ease; }}
-  .gm-panel {{ position:relative; width:min(440px,94vw); max-height:80vh; display:flex;
-               flex-direction:column; background:var(--panel); border:1px solid var(--line);
-               border-radius:18px; box-shadow:0 20px 60px rgba(0,0,0,.3); overflow:hidden;
-               animation:gmRise .18s cubic-bezier(.16,1,.3,1); }}
-  .gm-head {{ display:flex; align-items:center; gap:10px; padding:16px 18px 12px; }}
-  .gm-title {{ margin:0; font-family:var(--round); font-size:16px; font-weight:800;
-               color:var(--heading); flex:1; }}
-  .gm-x {{ border:none; background:none; cursor:pointer; font-size:22px; line-height:1;
-           color:var(--faint); padding:0 4px; }}
-  .gm-sub {{ padding:0 18px 10px; font-family:var(--round); font-size:12px;
-             font-weight:700; color:var(--sub); }}
-  .gm-list {{ overflow-y:auto; padding:0 12px 14px; }}
-  .gm-row {{ display:flex; align-items:center; justify-content:space-between; gap:10px;
-             padding:9px 12px; border-bottom:1px solid color-mix(in srgb, var(--line) 72%, transparent);
-             text-decoration:none; color:inherit; }}
-  .gm-row:last-child {{ border-bottom:0; }}
-  .gm-row:hover {{ background:var(--panel2); }}
-  .gm-row .gm-nm {{ font-size:13px; font-weight:600; color:var(--ink);
-                    overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }}
-  .gm-row .gm-rt {{ font-size:13px; font-weight:800; flex-shrink:0; }}
-  @keyframes gmFade {{ from{{opacity:0}} to{{opacity:1}} }}
-  @keyframes gmRise {{ from{{opacity:0;transform:translateY(12px)}} to{{opacity:1;transform:none}} }}
-
-  /* themes */
-  .theme-list {{ display:flex; flex-direction:column; gap:3px; }}
-  .theme-item {{ display:grid; grid-template-columns:30px 1fr 150px 74px 44px;
-                 align-items:center; gap:14px; padding:11px 6px;
-                 border-bottom:1px solid var(--line); border-radius:12px;
-                 transition:background .15s ease; }}
-  .theme-item:hover {{ background:var(--bg2); }}
-  .theme-item:last-child {{ border-bottom:0; }}
-  .t-rank {{ font-size:12px; color:var(--faint); font-weight:700; }}
-  .t-name {{ font-size:14px; font-weight:700; color:var(--heading); }}
-  .t-gauge {{ height:9px; background:var(--flat-soft); border-radius:999px; overflow:hidden; }}
-  .t-fill {{ display:block; height:100%; border-radius:999px;
-             transition:width 1.1s cubic-bezier(.16,1,.3,1); }}
-  .t-fill.up {{ background:linear-gradient(90deg,#f59ab3,var(--up)); }}
-  .t-fill.down {{ background:linear-gradient(90deg,var(--down),#a5c4ee); }}
-  .t-fill.flat {{ background:var(--flat); }}
-  .t-val {{ font-size:13.5px; font-weight:800; text-align:right; }}
-  .t-cnt {{ font-size:12px; color:var(--faint); text-align:right; font-weight:600; }}
-
-  /* 보통주(기본) ↔ 전종목 공용 토글 스위치 */
-  .rep-toggle {{ position:absolute; width:0; height:0; opacity:0; pointer-events:none; }}
-  .rep-switch {{ margin-left:auto; display:inline-flex; gap:2px; cursor:pointer;
-                 background:var(--flat-soft); border-radius:999px; padding:3px;
-                 font-family:var(--round); user-select:none; }}
-  .rep-switch .seg {{ padding:4px 13px; border-radius:999px; font-size:11.5px; font-weight:700;
-                      color:var(--sub); transition:color .18s ease, background .18s ease; }}
-  .rep-switch .seg-l {{ background:linear-gradient(135deg,var(--accent),var(--up)); color:#fff; }}
-  .rep-toggle:checked ~ .sec-head .rep-switch .seg-l {{ background:transparent; color:var(--sub); }}
-  .rep-toggle:checked ~ .sec-head .rep-switch .seg-r {{
-      background:linear-gradient(135deg,var(--accent),var(--up)); color:#fff; }}
-
-  /* 토글 콘텐츠 전환 (기본=보통주 노출, 체크=전종목 노출) */
-  .tiers.tiers-all {{ display:none; }}
-  .rep-toggle:checked ~ .tiers.tiers-common {{ display:none; }}
-  .rep-toggle:checked ~ .tiers.tiers-all {{ display:block; }}
-
-  /* trading value top — 2줄 캐주얼 칩 */
-  .tv-chips {{ display:grid; grid-template-columns:repeat(5, minmax(0, 1fr)); gap:9px;
-               grid-auto-rows:auto; align-items:start; }}
-  .tv-chips > .tv-chip {{ height:64px; }}
-  /* 펼치기 블록: 그리드 전체 폭을 차지하되 높이는 내용에 따라 자유롭게 */
-  .tv-more {{ grid-column:1 / -1; align-self:start; margin-top:4px; }}
-  .tv-more summary {{
-    display:inline-flex; align-items:center; height:30px; cursor:pointer;
-    color:var(--chip-text); border:1px solid var(--line);
-    background:var(--flat-soft); border-radius:999px;
-    padding:0 14px; font-size:11.5px; list-style:none; user-select:none;
-  }}
-  .tv-more summary::-webkit-details-marker {{ display:none; }}
-  .tv-more summary::after {{ content:"펼치기"; margin-left:8px; color:var(--sub);
-    font-family:var(--sans); font-size:11px; font-weight:700; }}
-  .tv-more[open] summary::after {{ content:"접기"; }}
-  .tv-more-grid {{ display:grid; grid-template-columns:repeat(5, minmax(0, 1fr));
-                   gap:9px; grid-auto-rows:auto; align-items:start; margin-top:9px; }}
-  .tv-more-grid > .tv-chip {{ height:64px; }}
-  .tv-chips.tv-all {{ display:none; }}
-  .rep-toggle:checked ~ .tv-chips.tv-common {{ display:none; }}
-  .rep-toggle:checked ~ .tv-chips.tv-all {{ display:grid; }}
-
-  .tv-chip {{ position:relative; display:flex; flex-direction:column; justify-content:center; gap:7px; text-decoration:none;
-              border-radius:16px; padding:10px 12px 10px 14px; min-width:0; width:100%; overflow:hidden;
-              background:linear-gradient(180deg,var(--panel2),var(--chip-base)); border:1px solid var(--line);
-              transition:transform .14s ease, box-shadow .14s ease; }}
-  .tv-chip:hover {{ transform:translateY(-2px); box-shadow:0 5px 14px rgba(79,65,72,.12); }}
-  .tv-top {{ display:flex; align-items:center; gap:8px; min-width:0; width:100%; }}
-  .tv-chip .tv-r {{ flex:0 0 auto; font-size:12px; font-weight:900; color:#fff;
-                    min-width:22px; height:22px; display:inline-flex; align-items:center;
-                    justify-content:center; border-radius:50%;
-                    background:var(--flat-soft); color:var(--sub);
-                    border:1px solid color-mix(in srgb, var(--faint) 28%, var(--chip-base));
-                    box-shadow:none; }}
-  .tv-chips > .tv-chip:nth-child(1) .tv-r {{ background:linear-gradient(135deg,#ffe18a,#f4b83f); color:#6b4a00; }}
-  .tv-chips > .tv-chip:nth-child(2) .tv-r {{ background:linear-gradient(135deg,#f3f4f6,#b8c0cc); color:#4f5968; }}
-  .tv-chips > .tv-chip:nth-child(3) .tv-r {{ background:linear-gradient(135deg,#f3bf8d,#b87333); color:#fff8f0; }}
-  .tv-n {{ flex:1 1 auto; min-width:0; font-size:13px; font-weight:800; color:var(--chip-name);
-           white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }}
-  .tv-meta {{ display:flex; justify-content:space-between; align-items:center; gap:8px; min-width:0; width:100%; }}
-  .tv-rate {{ flex:0 1 auto; min-width:0; max-width:100%; overflow:hidden; text-overflow:ellipsis;
-              font-size:12px; line-height:1; font-weight:900; white-space:nowrap;
-              padding:0; border-radius:0; background:transparent; }}
-  .tv-a {{ flex:0 1 auto; min-width:0; max-width:100%; overflow:hidden; text-overflow:ellipsis;
-           margin-left:auto; font-size:12.5px; line-height:1; font-weight:950; color:var(--strong);
-           white-space:nowrap; padding:3px 0; letter-spacing:.01em; }}
-  /* 거래량 급증: 배율 강조 알약 (좌) + 등락률 (우) */
-  .tv-mult {{ flex:0 0 auto; font-size:11.5px; line-height:1; font-weight:900; white-space:nowrap;
-              color:#fff; padding:3px 8px; border-radius:999px; letter-spacing:.01em;
-              background:linear-gradient(135deg,var(--accent),var(--up)); }}
-  .tv-meta .tv-mult ~ .tv-rate {{ margin-left:auto; }}
-
-  footer {{ margin-top:32px; padding-top:20px; border-top:1px solid var(--line);
-            text-align:center; font-family:var(--round); letter-spacing:.02em; }}
-  footer .foot-disc {{ margin:0 auto; max-width:560px; font-size:11.5px; line-height:1.6;
-            color:var(--sub); font-weight:600; }}
-  footer .foot-copy {{ margin:10px 0 0; font-size:11px; color:var(--faint); font-weight:600; }}
-
-  /* 마스코트 스타일은 mascot/mascots.css 로 분리(mascots.js 가 런타임 주입). 여기엔 두지 않는다. */
-
-  @keyframes pulse {{ 0%,100%{{opacity:1;}} 50%{{opacity:.4;}} }}
-  .reveal {{ opacity:0; transform:translateY(16px); animation:rise .8s cubic-bezier(.16,1,.3,1) forwards; }}
-  .reveal:nth-child(1){{animation-delay:.05s;}} .reveal:nth-child(2){{animation-delay:.14s;}}
-  .reveal:nth-child(3){{animation-delay:.23s;}} .reveal:nth-child(4){{animation-delay:.32s;}}
-  .reveal:nth-child(5){{animation-delay:.41s;}}
-  @keyframes rise {{ to {{ opacity:1; transform:none; }} }}
-  @media (prefers-reduced-motion:reduce) {{
-    .reveal{{animation:none;opacity:1;transform:none;}} .seg,.t-fill{{transition:none;}}
-    .brand .dot{{animation:none;}}
-  }}
-
-  @media (max-width:680px) {{
-    .wrap {{ padding:32px 14px 64px; }}
-    section {{ border-radius:18px; padding:20px 16px; }}
-    header h1 {{ font-size:33px; }}
-    .sec-head {{ flex-wrap:wrap; gap:10px; margin-bottom:18px; }}
-    .sec-head h2 {{ font-size:20px; flex:1 1 auto; }}
-    .sec-note {{ flex-basis:100%; margin-left:40px; }}
-    .rep-switch {{ margin-left:0; flex:0 0 auto; }}
-    .metrics {{ grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; }}
-    .metric {{ padding:13px 8px; border-radius:14px; }}
-    .m-label {{ font-size:10.5px; margin-bottom:6px; }}
-    .m-value {{ font-size:20px; gap:4px; }}
-    .m-pct {{ font-size:10.5px; }}
-    .mkt-grid {{ grid-template-columns:1fr; }}
-    .dg-markets {{ grid-template-columns:1fr; }}
-    .dg-caps {{ gap:7px; }}
-    .dg-cap {{ padding:12px 6px; border-radius:12px; }}
-    .dg-cap-rate {{ font-size:18px; }}
-    .dg-cap-sub {{ font-size:10px; }}
-    .heatmap {{ grid-template-columns:repeat(2,1fr); gap:7px; }}
-    .heat-cell {{ min-height:78px; padding:12px 12px 11px; }}
-    .heat-cell .h-val {{ font-size:20px; }}
-    .theme-item {{ grid-template-columns:26px 1fr 60px 38px; }}
-    .theme-item .t-gauge {{ display:none; }}
-    .tv-chips {{ grid-template-columns:repeat(2, minmax(0, 1fr)); gap:7px; grid-auto-rows:auto; }}
-    .tv-more-grid {{ grid-template-columns:repeat(2, minmax(0, 1fr)); gap:7px; grid-auto-rows:auto; }}
-    .tv-chips > .tv-chip, .tv-more-grid > .tv-chip {{ height:58px; }}
-    .mkt-head {{ flex-wrap:wrap; }}
-    .mkt-head-idx {{ width:100%; justify-content:flex-start; flex-wrap:wrap; }}
-    .tv-chip {{ padding:9px 10px; gap:7px; }}
-    .tv-chip .tv-n {{ font-size:12.5px; }}
-    .tv-top {{ gap:7px; }}
-    .tv-meta {{ gap:7px; }}
-    .tv-rate {{ font-size:11.5px; padding:3px 5px; }}
-    .tv-a {{ font-size:12px; }}
-    .tier-row {{
-      display:block;
-      padding-left:14px;
-    }}
-    .tier-side {{
-      width:100%;
-      flex-direction:row;
-      align-items:center;
-      gap:8px;
-      margin-bottom:10px;
-    }}
-    .tier-badge {{
-      width:34px;
-      height:34px;
-      border-radius:12px;
-      font-size:17px;
-    }}
-    .tier-range {{
-      flex:1;
-      font-size:11px;
-    }}
-    .tier-stocks {{
-      display:flex;
-      flex-wrap:wrap;
-      align-items:flex-start;
-      gap:7px;
-      width:100%;
-    }}
-    .tier-more-list {{
-      display:flex;
-      flex-wrap:wrap;
-      gap:7px;
-      width:100%;
-    }}
-    .tier-more {{
-      grid-column:1 / -1;
-      width:100%;
-    }}
-    .tier-more-list {{
-      margin-top:9px;
-      max-height:220px;
-    }}
-    .chip {{
-      min-width:0;
-      width:auto;
-      max-width:100%;
-      justify-content:flex-start;
-      gap:6px;
-      padding:6px 9px;
-    }}
-    .chip .c-name {{
-      min-width:0;
-      overflow:hidden;
-      text-overflow:ellipsis;
-      white-space:nowrap;
-    }}
-    .chip .c-rate {{
-      flex:0 0 auto;
-      font-size:11.5px;
-    }}
-  }}
-  @media (max-width:380px) {{
-    .tier-stocks,
-    .tier-more-list {{
-      display:flex;
-      flex-wrap:wrap;
-    }}
-  }}
-  @media (max-width:430px) {{
-    .tv-chips {{ grid-template-columns:1fr; grid-auto-rows:auto; }}
-    .tv-more-grid {{ grid-template-columns:1fr; grid-auto-rows:auto; }}
-    .tv-chips > .tv-chip, .tv-more-grid > .tv-chip {{ height:auto; }}
-    .tv-chip {{ min-height:44px; flex-direction:row; align-items:center; gap:8px; padding:8px 10px; }}
-    .tv-chip .tv-top {{ flex:1 1 auto; min-width:0; overflow:hidden; }}
-    .tv-chip .tv-meta {{ flex:0 0 120px; flex-direction:row; gap:6px; justify-content:flex-end; }}
-    .tv-chip .tv-n {{ font-size:12.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }}
-    .tv-chip .tv-rate {{ font-size:12px; white-space:nowrap; }}
-    .tv-chip .tv-a {{ font-size:12px; margin-left:0; }}
-    .mkt-metrics .m-value {{
-      flex-direction:column;
-      align-items:center;
-      gap:3px;
-      font-size:17px;
-      line-height:1.05;
-    }}
-    .mkt-metrics .m-pct {{ font-size:10px; }}
-  }}
-</style>
-</head>
-<body>
-<div class="wrap">
-  <header>
-    <div class="brand"><span class="dot"></span><span class="kicker">Market Brief · Daily</span></div>
-    <h1>{report_title} <em>데일리 브리프</em></h1>
-    <div class="meta-row">
-      <span><b>{date}</b></span><span class="sep">·</span>
-      <span><b>{session_label}</b></span><span class="sep">·</span>
-      <span>{market_subtitle}</span><span class="sep">·</span>
-      <span>기준 {generated_at}</span>
-    </div>
-    {date_nav}
-  </header>
-  {body}
-  <footer>
-    <p class="foot-disc">본 리포트는 시장 분위기 파악을 돕기 위한 참고 자료이며, 특정 종목의 매수·매도 권유나 투자 판단의 근거가 아닙니다. 데이터 지연·오류가 있을 수 있으며 모든 투자 책임은 이용자 본인에게 있습니다.</p>
-    <p class="foot-copy">© {year} Market Brief · 시장 분위기 파악용 경량 리포트</p>
-  </footer>
-</div>
-{mascots}
-<script>
-(function(){{
-  var dataEl = document.getElementById('mb-group-data');
-  var modal = document.getElementById('gmModal');
-  if(!dataEl || !modal) return;
-
-  var DATA = {{}};
-  try {{ DATA = JSON.parse(dataEl.textContent) || {{}}; }} catch(e) {{ return; }}
-
-  var titleEl = document.getElementById('gmTitle');
-  var subEl = document.getElementById('gmSub');
-  var listEl = document.getElementById('gmList');
-  var lastFocus = null;
-
-  function esc(s){{
-    return String(s).replace(/[&<>"']/g, function(ch){{
-      return ({{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}})[ch];
-    }});
-  }}
-  function rateClass(v){{ return v > 0 ? 'up' : (v < 0 ? 'down' : 'flat'); }}
-  function fmtRate(v){{ return (v > 0 ? '+' : '') + Number(v).toFixed(2) + '%'; }}
-  function stockUrl(code){{ return 'https://finance.naver.com/item/main.naver?code=' + encodeURIComponent(code); }}
-
-  function openGroup(kind, key){{
-    var members = (DATA[kind] || {{}})[key];
-    if(!members) return;
-
-    titleEl.textContent = key;
-    subEl.textContent = members.length.toLocaleString() + '종목 · 등락률순';
-    var html = '';
-    for(var i = 0; i < members.length; i++){{
-      var m = members[i];
-      html += '<a class="gm-row" href="' + stockUrl(m.code) + '" target="_blank" rel="noopener noreferrer">'
-            + '<span class="gm-nm">' + esc(m.name) + '</span>'
-            + '<span class="gm-rt mono ' + rateClass(m.rate) + '">' + fmtRate(m.rate) + '</span></a>';
-    }}
-    listEl.innerHTML = html;
-    listEl.scrollTop = 0;
-    lastFocus = document.activeElement;
-    modal.hidden = false;
-    document.body.style.overflow = 'hidden';
-  }}
-
-  function closeGroup(){{
-    modal.hidden = true;
-    document.body.style.overflow = '';
-    if(lastFocus && lastFocus.focus) lastFocus.focus();
-  }}
-
-  document.addEventListener('click', function(e){{
-    var opener = e.target.closest && e.target.closest('.gm-open');
-    if(opener){{
-      openGroup(opener.getAttribute('data-gkind'), opener.getAttribute('data-gkey'));
-      return;
-    }}
-    if(e.target.closest && e.target.closest('[data-close]')) closeGroup();
-  }});
-  document.addEventListener('keydown', function(e){{
-    if(e.key === 'Escape' && !modal.hidden) closeGroup();
-    if(e.key === 'Enter' || e.key === ' '){{
-      var opener = e.target.closest && e.target.closest('.gm-open');
-      if(opener){{
-        e.preventDefault();
-        openGroup(opener.getAttribute('data-gkind'), opener.getAttribute('data-gkey'));
-      }}
-    }}
-  }});
-}})();
-</script>
-</body>
-</html>"""
+_TEMPLATE_DIR = _REPORT_DIR / "templates"
+_ASSET_DIR = _REPORT_DIR / "assets"
+_PAGE = _read_text(_TEMPLATE_DIR / "report.html")
+_REPORT_CSS = _read_text(_ASSET_DIR / "report.css")
+_GROUP_MODAL_JS = _script_tag(_read_text(_ASSET_DIR / "group_modal.js"))

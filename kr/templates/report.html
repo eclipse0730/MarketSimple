@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="ko" data-theme="{default_theme}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Market Brief — {date} {session_label}</title>
+<script>
+  // 사용 가능한 테마 목록 + 기본값. 카멜레온(테마 캐릭터)과 아래 폴백 스크립트가 공유.
+  window.__MB_THEMES={{"list":{theme_ids_json},"def":"{default_theme}"}};
+  // FOUC 방지: 저장된 테마를 그리기 전에 곧바로 적용(목록에 있는 값만).
+  (function(){{try{{var t=localStorage.getItem("mb_theme");
+    if(t&&window.__MB_THEMES.list.indexOf(t)>=0)
+      document.documentElement.setAttribute("data-theme",t);
+  }}catch(e){{}}}})();
+</script>
+{og_tags}
+{ga}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=Quicksand:wght@400;500;600;700&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+{themes_css}
+{report_css}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand"><span class="dot"></span><span class="kicker">Market Brief · Daily</span></div>
+    <h1>{report_title} <em>데일리 브리프</em></h1>
+    <div class="meta-row">
+      <span><b>{date}</b></span><span class="sep">·</span>
+      <span><b>{session_label}</b></span><span class="sep">·</span>
+      <span>{market_subtitle}</span><span class="sep">·</span>
+      <span>기준 {generated_at}</span>
+    </div>
+    {date_nav}
+  </header>
+  {body}
+  <footer>
+    <p class="foot-disc">본 리포트는 시장 분위기 파악을 돕기 위한 참고 자료이며, 특정 종목의 매수·매도 권유나 투자 판단의 근거가 아닙니다. 데이터 지연·오류가 있을 수 있으며 모든 투자 책임은 이용자 본인에게 있습니다.</p>
+    <p class="foot-copy">© {year} Market Brief · 시장 분위기 파악용 경량 리포트</p>
+  </footer>
+</div>
+{mascots}
+{group_modal_js}
+</body>
+</html>
