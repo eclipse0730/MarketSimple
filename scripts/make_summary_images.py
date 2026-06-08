@@ -92,7 +92,8 @@ def _date_of(path: Path) -> str:
     return m.group(1) if m else ""
 
 
-def _card_inject(show_ids: list[str], head_title: str, mascot_uri: str) -> tuple[str, str]:
+def _card_inject(show_ids: list[str], head_title: str, mascot_uri: str,
+                 base_time: str = "") -> tuple[str, str]:
     """대상 섹션만 보이게 하는 <style> 와 카드 헤더/푸터를 붙이는 <script> 를 만든다."""
     show_sel = ", ".join(f"#{i}" for i in show_ids)
     style = f"""
@@ -122,6 +123,9 @@ def _card_inject(show_ids: list[str], head_title: str, mascot_uri: str) -> tuple
       border-left:1px solid var(--line); border-bottom:1px solid var(--line); }}
   #card-head .ch-title {{ font-weight:800; font-size:23px; color:var(--heading);
                letter-spacing:-.01em; text-align:center; white-space:nowrap; }}
+  /* 우상단: 데이터 기준시각(시:분). 우측 칼럼에 우측정렬. */
+  #card-head .ch-time {{ justify-self:end; font-family:var(--round,sans-serif);
+               font-weight:700; font-size:15px; color:var(--sub); white-space:nowrap; }}
 </style>
 """
     script = f"""
@@ -135,7 +139,7 @@ def _card_inject(show_ids: list[str], head_title: str, mascot_uri: str) -> tuple
                    +   '<span class="cf-bubble">{FOOT_TEXT}</span>'
                    + '</span>'
                    + '<span class="ch-title">{head_title}</span>'
-                   + '<span></span>';
+                   + '<span class="ch-time">{base_time}</span>';
     wrap.insertBefore(head, wrap.firstChild);
   }}
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', go); else go();
@@ -269,6 +273,10 @@ def main(argv=None) -> None:
     base_dir = Path(args.out) if args.out else (ROOT / "output" / "kr" / "summary" / date_str)
     themes = [args.theme] if args.theme else THEMES
     report_html = report.read_text(encoding="utf-8")
+    # 카드 우상단에 표시할 기준시각(시:분). 리포트에 구워진 '기준 YYYY-MM-DD HH:MM'
+    # (= 데이터 수집 시점)을 그대로 쓴다. 없으면 현재 시각으로 폴백.
+    m_time = re.search(r"기준 \d{4}-\d{2}-\d{2} (\d{2}:\d{2})", report_html)
+    base_time = f"기준 {m_time.group(1)}" if m_time else f"기준 {datetime.now():%H:%M}"
     stamp = datetime.now().strftime("%Y-%m-%d %H:%M KST")
     print(f"▶ 요약 이미지 생성  |  {date_str}  ←  {report.name}  |  테마 {len(themes)}종"
           f"{' · 발송 ON' if do_send else ''}")
@@ -282,7 +290,7 @@ def main(argv=None) -> None:
         out_dir.mkdir(parents=True, exist_ok=True)
         pngs = []     # 이 테마에서 생성에 성공한 이미지(발송 대상)
         for name, ids, sub, mascot in CARDS:
-            style, script = _card_inject(ids, head_title, mascot_uris[mascot])
+            style, script = _card_inject(ids, head_title, mascot_uris[mascot], base_time)
             card_html = _build_card_html(themed_html, style, script)
             with tempfile.NamedTemporaryFile("w", suffix=".html", delete=False, encoding="utf-8") as tf:
                 tf.write(card_html)
