@@ -1,5 +1,7 @@
   * { box-sizing:border-box; }
-  html { scroll-behavior:smooth; }
+  /* 카톡 인앱 브라우저 등 일부 웹뷰의 자동 글자확대를 끈다. 안 막으면 폭이 타이트한
+     마스코트 말풍선(펭구·시바)에서 글자만 커져 단어가 다음 줄로 넘어간다. */
+  html { scroll-behavior:smooth; -webkit-text-size-adjust:100%; text-size-adjust:100%; }
   body {
     margin:0; color:var(--ink);
     background:var(--body-bg);
