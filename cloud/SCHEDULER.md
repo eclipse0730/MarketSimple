@@ -223,3 +223,87 @@ echo $GITHUB_TOKEN | gcloud secrets create github-token --data-file=-
 gcloud run services update $SERVICE --region $REGION `
   --update-secrets "GITHUB_TOKEN=github-token:latest"
 ```
+
+---
+
+## 8. 운영 (일상 관리)
+
+실제 배포된 환경 값:
+
+| 항목 | 값 |
+|---|---|
+| 프로젝트 | `marketsimple-trigger` |
+| 리전 | `asia-northeast3` (서울) |
+| Cloud Run 서비스 | `ms-trigger` |
+| 서비스 URL | `https://ms-trigger-sxbozghs5q-du.a.run.app` |
+| Scheduler 잡 | `ms-update`(평일 09~15시 7,37분) · `ms-summary-am`(11:58) · `ms-summary-pm`(15:33), 모두 KST |
+| Scheduler 서비스계정 | `ms-scheduler@marketsimple-trigger.iam.gserviceaccount.com` |
+
+> **중요**: GitHub schedule cron 은 비활성화돼 있다(update.yml·summary-telegram.yml).
+> 따라서 **Cloud Scheduler 가 유일한 자동 실행원**이다. 잡을 pause/삭제하면 리포트
+> 자동 갱신이 멈춘다.
+
+### 콘솔(브라우저)에서 보기
+
+| 무엇 | URL |
+|---|---|
+| Cloud Run 서비스 | https://console.cloud.google.com/run?project=marketsimple-trigger |
+| Cloud Scheduler 잡 | https://console.cloud.google.com/cloudscheduler?project=marketsimple-trigger |
+| 로그 | Run → `ms-trigger` 클릭 → 상단 **로그** 탭 |
+| 비용/예산 | https://console.cloud.google.com/billing |
+
+Cloud Run 서비스 클릭 시 탭: **측정항목**(요청·에러율) · **로그** · **수정 및 새 버전
+배포**(환경변수·메모리) · **버전**(revision 이력) · **트리거**.
+
+### CLI 빠른 참조
+
+> PATH 미반영 시: `$gcloud = "$env:LOCALAPPDATA\Google\Cloud SDK\google-cloud-sdk\bin\gcloud.cmd"`
+> 로 잡고 `& $gcloud ...` 로 호출. 아래는 PATH 반영된 새 터미널 기준.
+
+```powershell
+$P = "marketsimple-trigger"; $R = "asia-northeast3"
+
+# (A) 상태 확인 — 잡 목록 + 마지막 실행 시각
+gcloud scheduler jobs list --location $R --project $P
+
+# (B) 로그 보기 (문제 추적 1순위)
+gcloud run services logs read ms-trigger --region $R --project $P --limit 30
+
+# (C) 수동 테스트 — 직후 GitHub Actions 탭에 workflow_dispatch 로 떠야 정상
+gcloud scheduler jobs run ms-update --location $R --project $P
+
+# (D) 스케줄 멈춤 / 재개 (휴장·점검 시)
+gcloud scheduler jobs pause  ms-update --location $R --project $P
+gcloud scheduler jobs resume ms-update --location $R --project $P
+
+# (E) 실행 시각 변경
+gcloud scheduler jobs update http ms-update --schedule "0,30 9-15 * * 1-5" --location $R --project $P
+```
+
+### 코드/환경변수 변경
+
+```powershell
+# 트리거 서비스 코드(cloud/trigger/main.py)를 고쳤을 때 → 재배포(환경변수 유지)
+cd cloud/trigger
+gcloud run deploy ms-trigger --source . --region $R --project $P --no-allow-unauthenticated
+
+# 환경변수 개별 수정(기존 유지). 예: PAT 갱신
+gcloud run services update ms-trigger --region $R --project $P --update-env-vars "GITHUB_TOKEN=새토큰"
+```
+
+### ⚠️ 자주 밟는 함정 (PowerShell)
+
+- **`--env-vars-file` 은 환경변수를 전체 교체**한다. 일부만 든 파일을 주면 나머지가
+  날아간다. 개별 변경은 `--update-env-vars` 를 쓴다.
+- **콤마 든 값**(`ALLOWED_WORKFLOWS=a.yml,b.yml`)이나 **JSON body** 는 PowerShell
+  에서 따옴표가 깨진다 → YAML 파일(`--env-vars-file`) / `--message-body-from-file`
+  / 콘솔 UI 로 넣는다. (Scheduler body 가 `{workflow:...}` 처럼 따옴표 없이 저장되면
+  Cloud Run 이 422 를 낸다.)
+- **Scheduler 가 Content-Type 을 octet-stream 으로 강제**하므로 서버는 raw body 를
+  직접 json.loads 한다(main.py). Content-Type 헤더를 못 바꿔도 정상이다.
+
+### 점검 주기
+
+- **PAT 만료**: 발급 시 정한 만료일 도래 시 트리거가 401/403. 미리 갱신(위 명령).
+- **비용 알림**: billing → 예산 및 알림에서 월 $1 등 임계 알림을 걸어 과금 조기 감지.
+- 실질 비용은 이 규모에서 거의 $0(Cloud Run 무료 한도 한참 아래, Scheduler 3잡 무료).
