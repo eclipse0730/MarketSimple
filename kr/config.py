@@ -39,7 +39,6 @@ MARKET_KEY = "kr"
 MARKET_NAME = "한국 증시"
 MARKET_SUBTITLE = "KOSPI · KOSDAQ"
 MARKETS = ("KOSPI", "KOSDAQ")
-REPORT_FILENAME_PREFIX = "한국증시 DailyTier"
 STOCK_URL_TEMPLATE = "https://finance.naver.com/item/main.naver?code={code6}"
 
 # 배포 사이트 기준 URL (카톡 공유 OG 태그의 og:url/og:image 절대경로용).
@@ -66,8 +65,12 @@ CHARACTERS_JSON_PATH = os.environ.get("CHARACTERS_JSON_PATH", "/mascot/character
 
 
 def report_filename(date_str: str) -> str:
-    """리포트 HTML 파일명 규칙(단일 출처). 날짜 네비게이션 링크도 이걸 쓴다."""
-    return f"{REPORT_FILENAME_PREFIX} [{date_str}].html"
+    """리포트 HTML 파일명 규칙(단일 출처). 날짜 네비게이션 링크도 이걸 쓴다.
+
+    index_YYYYMMDD.html — 한 폴더(output/<market>/report)에 날짜별로 평평하게 쌓인다.
+    시장 구분은 폴더(output/kr·output/us)로 하므로 파일명엔 날짜만 둔다.
+    """
+    return f"index_{date_str}.html"
 
 # ──────────────────────────────────────────────
 # 티어 정의: (티어이름, 하한[포함], 상한[미포함])

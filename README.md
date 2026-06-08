@@ -31,7 +31,7 @@ python main.py --market us --date 20260529  # 미국 시장 EOD 리포트
 결과물은 `output/` 아래 용도별 폴더에 생성됩니다.
 
 * `output/kr/data/market_YYYYMMDD.csv` — 수집한 전 종목 원본 데이터
-* `output/kr/report/한국증시 DailyTier [YYYYMMDD].html` — 리포트 (브라우저로 열기)
+* `output/kr/report/index_YYYYMMDD.html` — 리포트 (브라우저로 열기)
 * `output/kr/theme/theme_map_YYYYMMDD.csv` — 수동 테마와 미분류 보완을 합친 최종 테마 매핑
 
 ## 데이터 소스
@@ -96,13 +96,15 @@ us/                  미국 시장 구현
   report_mode1.py    mode1 테마 래퍼
   report_mode2.py    mode2 테마 래퍼
 scripts/             보조 스크립트
-  publish_pages.py   리포트·마스코트·이미지를 docs/ 로 발행(GitHub Pages)
+  publish_pages.py   리포트를 docs/ 로 발행(GitHub Pages)
   make_summary_images.py  카톡 공유용 요약 이미지 3장 생성
   serve_local.py     로컬 미리보기 서버
-mascot/              마스코트 위젯 (재빌드 불필요, 두 파일만 고치면 갱신)
-  mascots.js         동작·렌더러
-  mascots.css        스타일
-  characters.json    캐릭터·대사·말풍선 설정
+docs/                GitHub Pages 발행물(배포본) — 아래 mascot·images 는 소스 겸 배포본
+  mascot/            마스코트 위젯 (재빌드 불필요, 이 폴더만 고치면 갱신)
+    mascots.js       동작·렌더러
+    mascots.css      스타일
+    characters.json  캐릭터·대사·말풍선 설정
+  images/            마스코트 PNG 등 정적 이미지(소스 겸 배포본)
 ```
 
 ## 자동 실행 (GitHub Actions)

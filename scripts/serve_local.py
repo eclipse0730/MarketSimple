@@ -8,7 +8,7 @@
 동작:
   1) SITE_BASE_URL 을 비워서 빌드 → 이미지/마스코트 경로가 상대(/images, /mascot/…)가 됨
      (로컬 서버 루트에서 이미지가 깨지지 않도록)
-  2) 최신 리포트를 _localtest/index.html 로, images/·mascot/ 을 루트에 배치
+  2) 최신 리포트를 _localtest/index.html 로, docs/images·docs/mascot 을 루트에 배치
   3) http 서버 기동 → 같은 와이파이의 폰에서 http://<PC IP>:<port>/ 로 접속
 
 배포(marketbrief.kr)는 publish_pages.py 가 담당한다. 이건 로컬 확인 전용이다.
@@ -54,15 +54,16 @@ def build_and_stage(date: str | None) -> None:
     kr_main(argv)
 
     SITE.mkdir(parents=True, exist_ok=True)
-    reports = sorted((ROOT / "output" / "kr" / "report").glob("*].html"))
+    reports = sorted((ROOT / "output" / "kr" / "report").glob("index_*.html"))
     if not reports:
         raise SystemExit("리포트가 없습니다. 먼저 데이터를 수집하세요.")
     shutil.copy2(reports[-1], SITE / "index.html")
 
-    images = ROOT / "images"
+    # 이미지·마스코트는 docs/ 안에서 단일 소스로 관리한다(중복 제거).
+    images = ROOT / "docs" / "images"
     if images.is_dir():
         shutil.copytree(images, SITE / "images", dirs_exist_ok=True)
-    mascot = ROOT / "mascot"
+    mascot = ROOT / "docs" / "mascot"
     if mascot.is_dir():
         shutil.copytree(mascot, SITE / "mascot", dirs_exist_ok=True)
 

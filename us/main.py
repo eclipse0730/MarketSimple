@@ -140,7 +140,7 @@ def main(argv=None):
 
     csv_path = os.path.join(data_dir, f"market_{date_str}.csv")
     theme_map_path = os.path.join(theme_dir, f"theme_map_{date_str}.csv")
-    html_path = os.path.join(report_dir, f"{config.REPORT_FILENAME_PREFIX} [{date_str}].html")
+    html_path = os.path.join(report_dir, config.report_filename(date_str))
 
     print(f"▶ Market Brief V1  |  {date_str}")
 

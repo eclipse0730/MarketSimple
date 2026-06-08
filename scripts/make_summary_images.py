@@ -17,7 +17,7 @@
   주입해 테마별로 한 세트씩 만든다. 기본은 4테마 전부 생성(--theme 로 1개만 가능).
   출력은 <out>/<테마> 폴더로 분리한다.
 
-동작: 빌드된 리포트 HTML(output/kr/report/…[날짜].html)에 스타일/스크립트를 주입해
+동작: 빌드된 리포트 HTML(output/kr/report/index_날짜.html)에 스타일/스크립트를 주입해
   대상 섹션만 남기고, 헤드리스 Chrome 으로 전체를 캡처한 뒤 배경 여백을 잘라 1080px
   폭으로 저장한다. 좌상단에 카드별 마스코트 + "marketbrief.kr" 말풍선, 상단 중앙에
   "<날짜> 오전장/장마감 요약"(실행 시각으로 자동 판단)을 넣는다.
@@ -78,12 +78,12 @@ def _find_chrome() -> str | None:
 
 
 def _latest_report() -> Path | None:
-    files = sorted(Path(ROOT / "output" / "kr" / "report").glob("*].html"))
+    files = sorted(Path(ROOT / "output" / "kr" / "report").glob("index_*.html"))
     return files[-1] if files else None
 
 
 def _report_for_date(date_str: str) -> Path | None:
-    hits = list(Path(ROOT / "output" / "kr" / "report").glob(f"*[[]{date_str}].html"))
+    hits = list(Path(ROOT / "output" / "kr" / "report").glob(f"index_{date_str}.html"))
     return hits[0] if hits else None
 
 
@@ -267,7 +267,7 @@ def main(argv=None) -> None:
     session_label = "오전장 요약" if datetime.now().hour < 14 else "장마감 요약"
     head_title = f"{date_label} {session_label}"
     mascot_uris = {
-        c[3]: (ROOT / "images" / c[3]).resolve().as_uri() for c in CARDS
+        c[3]: (ROOT / "docs" / "images" / c[3]).resolve().as_uri() for c in CARDS
     }
 
     base_dir = Path(args.out) if args.out else (ROOT / "output" / "kr" / "summary" / date_str)
