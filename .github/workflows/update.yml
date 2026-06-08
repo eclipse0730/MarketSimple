@@ -54,3 +54,20 @@ jobs:
             git commit -m "자동 업데이트 $(date '+%Y-%m-%d %H:%M KST')"
             git push
           fi
+
+      # 위 스텝 중 하나라도 실패하면 텔레그램으로 알림. (시크릿 없으면 조용히 스킵)
+      - name: Notify Telegram on failure
+        if: failure()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_CHAT_ID" ]; then
+            echo "텔레그램 시크릿 없음 — 알림 스킵"; exit 0
+          fi
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          TEXT=$(printf '🚨 update-report 워크플로 실패\n시각: %s\n커밋: %s\n로그: %s' \
+            "$(TZ=Asia/Seoul date '+%Y-%m-%d %H:%M KST')" "${GITHUB_SHA:0:7}" "$RUN_URL")
+          curl -sS -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            --data-urlencode chat_id="${TELEGRAM_CHAT_ID}" \
+            --data-urlencode text="$TEXT" >/dev/null
