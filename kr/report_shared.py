@@ -639,7 +639,8 @@ def _mascots_html(ctx=None):
     if not config.MASCOT_ENABLED:
         return ""
     try:
-        mascot_version = int((_REPORT_DIR.parent / "mascot" / "mascots.js").stat().st_mtime)
+        # 마스코트 소스 겸 배포본은 docs/mascot 하나로 관리한다(중복 제거).
+        mascot_version = int((_REPORT_DIR.parent / "docs" / "mascot" / "mascots.js").stat().st_mtime)
         js_url = f"/mascot/mascots.js?v={mascot_version}"
     except OSError:
         js_url = "/mascot/mascots.js"

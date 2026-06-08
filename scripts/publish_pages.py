@@ -23,8 +23,8 @@ from urllib.parse import unquote, urlparse
 ROOT = Path(__file__).resolve().parents[1]
 DOCS = ROOT / "docs"
 
-REPORT_RE = re.compile(r"\[(\d{8})\]\.html$")
-# 리포트 내 날짜 이동 버튼: href="<url인코딩된 …[YYYYMMDD].html>"
+REPORT_RE = re.compile(r"index_(\d{8})\.html$")
+# 리포트 내 날짜 이동 버튼: href="<url인코딩된 index_YYYYMMDD.html>"
 NAV_HREF_RE = re.compile(r'(class="date-nav-btn (?:prev|next)" href=")([^"]+)(")')
 
 # 게시할 시장 목록 — 시장 추가/제거는 여기 한 줄. landing=True 인 시장이 루트(/) 기본.
@@ -58,7 +58,7 @@ def _report_dates(market: str) -> list[str]:
     if not report_dir.exists():
         return []
     dates = []
-    for p in report_dir.glob("*].html"):   # 옛 *_mode1.html 잔존물은 REPORT_RE 가 걸러냄
+    for p in report_dir.glob("index_*.html"):   # REPORT_RE 로 날짜만 추출(다른 잔존물 제외)
         m = REPORT_RE.search(p.name)
         if m:
             dates.append(m.group(1))
@@ -69,7 +69,7 @@ def _rewrite_nav_links(html: str) -> str:
     """날짜 이동 링크(로컬 파일명) → 배포 경로(../YYYYMMDD/)로 치환."""
     def repl(m):
         target = unquote(m.group(2))
-        dm = re.search(r"\[(\d{8})\]\.html$", target)
+        dm = re.search(r"index_(\d{8})\.html$", target)
         if not dm:
             return m.group(0)
         return f"{m.group(1)}../{dm.group(1)}/{m.group(3)}"
@@ -209,7 +209,7 @@ def publish_market(market: str, title: str, only_latest: bool = False,
 
     report_dir = ROOT / "output" / market / "report"
     for date_str in dates:
-        src = report_dir / f"{_prefix(market)} [{date_str}].html"
+        src = report_dir / _report_filename(market, date_str)
         if not src.exists():
             continue
         day_dir = out_root / date_str
@@ -231,12 +231,13 @@ def publish_market(market: str, title: str, only_latest: bool = False,
     return True
 
 
-def _prefix(market: str) -> str:
+def _report_filename(market: str, date_str: str) -> str:
+    """시장별 리포트 원본 파일명(단일 출처는 각 시장 config.report_filename)."""
     if market == "kr":
         from kr import config
-        return config.REPORT_FILENAME_PREFIX
-    from us import config  # type: ignore
-    return getattr(config, "REPORT_FILENAME_PREFIX", "Report")
+    else:
+        from us import config  # type: ignore
+    return config.report_filename(date_str)
 
 
 def _copy_fallback_thumb(out_root: Path, day_dir: Path, date_str: str) -> bool:
@@ -349,18 +350,9 @@ def main(argv=None) -> None:
     elif cname_file.exists():
         cname_file.unlink()
 
-    # 마스코트: 캐릭터 폴더(데이터 characters.json + 렌더러 mascots.js) 통째 복사.
-    # → 재빌드 없이 이 폴더만 고치면 갱신된다.
-    mascot_src = ROOT / "mascot"
-    if mascot_src.is_dir():
-        shutil.copytree(mascot_src, DOCS / "mascot", dirs_exist_ok=True)
-        print("  · mascot/ 복사")
-
-    # 정적 이미지(마스코트 등): images/ → docs/images/
-    images_src = ROOT / "images"
-    if images_src.is_dir():
-        shutil.copytree(images_src, DOCS / "images", dirs_exist_ok=True)
-        print("  · images/ 복사")
+    # 마스코트(docs/mascot)·정적 이미지(docs/images)는 docs/ 안에서 소스 겸 배포본으로
+    # 직접 관리한다(과거엔 루트 mascot/·images/ 를 여기로 복사했으나 중복이라 통합).
+    # 갱신 시 docs/mascot·docs/images 파일만 고치면 되고 재빌드는 불필요하다.
 
     ready = {}
     for m in MARKETS:

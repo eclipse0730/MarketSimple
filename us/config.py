@@ -8,8 +8,15 @@ MARKET_KEY = "us"
 MARKET_NAME = "미국 증시"
 MARKET_SUBTITLE = "NYSE · NASDAQ · AMEX"
 MARKETS = ("NYSE", "NASDAQ", "AMEX", "ARCA", "BATS", "US")
-REPORT_FILENAME_PREFIX = "미국증시 DailyTier"
 STOCK_URL_TEMPLATE = "https://finance.yahoo.com/quote/{symbol}"
+
+
+def report_filename(date_str: str) -> str:
+    """리포트 HTML 파일명 규칙(단일 출처). KR 과 동일하게 index_YYYYMMDD.html.
+
+    시장 구분은 폴더(output/kr·output/us)로 하므로 파일명엔 날짜만 둔다.
+    """
+    return f"index_{date_str}.html"
 
 TIERS = [
     ("S",   25.0,  999.0),
