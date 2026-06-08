@@ -94,21 +94,21 @@ def _date_label(date_str: str) -> str:
     return f"{date_str[:4]}.{date_str[4:6]}.{date_str[6:]}"
 
 
-def _nav_btn(neighbor: str | None, kind: str, title: str) -> str:
+def _nav_btn(neighbor: str | None, kind: str, title: str, prefix: str = "../") -> str:
     if neighbor:
-        return (f'<a class="date-nav-btn {kind}" href="../{neighbor}/" '
+        return (f'<a class="date-nav-btn {kind}" href="{prefix}{neighbor}/" '
                 f'aria-label="{title}" title="{title} ({_date_label(neighbor)})">'
                 f'{NAV_ARROWS[kind]}</a>')
     return (f'<span class="date-nav-btn {kind} is-disabled" aria-hidden="true">'
             f'{NAV_ARROWS[kind]}</span>')
 
 
-def _nav_block(cur: str, prev: str | None, nxt: str | None) -> str:
+def _nav_block(cur: str, prev: str | None, nxt: str | None, prefix: str = "../") -> str:
     return (
         '<nav class="date-nav" aria-label="날짜 이동">'
-        f'{_nav_btn(prev, "prev", "이전 거래일")}'
+        f'{_nav_btn(prev, "prev", "이전 거래일", prefix)}'
         f'<span class="date-nav-cur mono">{_date_label(cur)}</span>'
-        f'{_nav_btn(nxt, "next", "다음 거래일")}'
+        f'{_nav_btn(nxt, "next", "다음 거래일", prefix)}'
         '</nav>'
     )
 
@@ -144,6 +144,39 @@ def _rebuild_nav_links(market_root: Path) -> int:
     if fixed:
         print(f"  · {market_root.name}: 날짜 네비 {fixed}건 갱신")
     return fixed
+
+
+def _write_root_latest(landing: str) -> bool:
+    """루트(/)에 landing 시장 최신 리포트를 직접 배치한다.
+
+    meta-refresh 리다이렉트(/, /kr/ → /kr/날짜/) 대신 루트에 리포트 본문을 바로
+    두어, marketbrief.kr 로 들어와도 주소창이 /kr/날짜/ 로 바뀌지 않게 한다(공유 시
+    날짜 박힌 URL 이 복사되던 문제 해결). 날짜 nav 는 루트 기준(kr/날짜/)으로,
+    og:url 은 루트로 재작성한다. 마스코트·이미지 경로는 절대경로(/mascot, /images)라
+    루트에서도 그대로 동작한다.
+    """
+    market_root = DOCS / landing
+    dates = sorted(d.name for d in market_root.iterdir()
+                   if d.is_dir() and d.name.isdigit() and len(d.name) == 8) if market_root.is_dir() else []
+    if not dates:
+        return False
+    latest = dates[-1]
+    src = market_root / latest / "index.html"
+    if not src.exists():
+        return False
+
+    html = src.read_text(encoding="utf-8")
+    # 1) 날짜 nav 를 루트 기준(kr/날짜/)으로 재생성 — 루트는 /kr/ 보다 한 단계 위라 prefix 다름
+    prev = dates[-2] if len(dates) >= 2 else None
+    html, _ = NAV_BLOCK_RE.subn(
+        lambda _m: _nav_block(latest, prev, None, prefix=f"{landing}/"), html, count=1)
+    # 2) og:url / twitter url 의 /kr/날짜/ 를 루트(/)로 — 루트 페이지의 정식 주소는 도메인 루트
+    base = os.environ.get("SITE_BASE_URL", "").rstrip("/")
+    if base:
+        html = html.replace(f'content="{base}/{landing}/{latest}/"', f'content="{base}/"')
+    _write_text(DOCS / "index.html", html)
+    print(f"  · 루트(/): {landing} 최신({latest}) 리포트 직접 배치")
+    return True
 
 
 def _make_thumbnail(chrome: str, html_path: Path, out_png: Path) -> bool:
@@ -361,14 +394,11 @@ def main(argv=None) -> None:
         # (장중 모드에서 직전 날짜의 next 가 막히는 문제 + 끊긴 링크 동시 교정)
         _rebuild_nav_links(DOCS / m["key"])
 
-    # 루트(/) 진입 시 landing 시장 최신 리포트로 이동. 없으면 선택 메뉴 폴백.
+    # 루트(/) 에는 landing 시장 최신 리포트를 '직접' 배치한다(리다이렉트 X).
+    # → marketbrief.kr 로 들어와도 주소창이 /kr/날짜/ 로 바뀌지 않아, 공유 URL 이 깔끔하다.
+    # 리포트가 아직 없으면 시장 선택 메뉴로 폴백.
     landing = next((m["key"] for m in MARKETS if m.get("landing")), None)
-    if landing and ready.get(landing):
-        latest = _report_dates(landing)[-1] if _report_dates(landing) else ""
-        _write_text(DOCS / "index.html",
-                    _redirect_page("Market Brief", f"{landing}/",
-                                   _redirect_og(landing, latest, root=True)))
-    else:
+    if not (landing and ready.get(landing) and _write_root_latest(landing)):
         _write_text(DOCS / "index.html", _home_page(ready))
     print("✔ docs/ 갱신 완료")
 
