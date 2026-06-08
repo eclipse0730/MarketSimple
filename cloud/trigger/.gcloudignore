@@ -1,0 +1,5 @@
+# gcloud run deploy --source 시 업로드 제외 목록.
+__pycache__/
+*.pyc
+.env
+*.md
