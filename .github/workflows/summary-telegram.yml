@@ -31,6 +31,14 @@ jobs:
         uses: browser-actions/setup-chrome@v1
         id: chrome
 
+      # 러너에 한글 폰트가 없으면 Chrome 캡처에서 한글이 □□□(두부)로 깨진다.
+      # report.css 의 --sans/--round 폴백이 우분투엔 없는 폰트라 Noto CJK 로 받쳐준다.
+      - name: Install Korean fonts
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fonts-noto-cjk fonts-nanum
+          fc-cache -f
+
       # 리포트 빌드 → 요약 이미지 생성 → 테마별 즉시 발송까지 한 스텝에서 처리.
       # make_summary_images 가 각 테마 3장을 만든 직후 곧바로 텔레그램 앨범을 보낸다
       # (TELEGRAM_BOT_TOKEN/CHAT_ID 가 있을 때). 빠른 테마부터 순차 도착한다.
