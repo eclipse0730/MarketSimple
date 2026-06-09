@@ -88,7 +88,9 @@ def _report_for_date(date_str: str) -> Path | None:
 
 
 def _date_of(path: Path) -> str:
-    m = re.search(r"\[(\d{8})\]\.html$", path.name)
+    # 파일명에 박힌 8자리 날짜를 뽑는다. 현재 형식은 index_YYYYMMDD.html,
+    # 과거 형식 "... [YYYYMMDD].html" 도 같은 정규식으로 함께 잡힌다.
+    m = re.search(r"(\d{8})", path.name)
     return m.group(1) if m else ""
 
 
