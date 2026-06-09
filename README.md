@@ -119,45 +119,22 @@ python scripts/publish_pages.py --intraday  # 최신 날짜만 갱신(장중 경
 
 `Actions` 탭에서 수동 실행(`workflow_dispatch`)도 가능합니다.
 
-### 맥북 launchd 백업 트리거 (cron 드롭 보완)
+### 스케줄 트리거: Cloud Scheduler → Cloud Run
 
-GitHub Actions의 `schedule`(cron)은 best-effort라 혼잡 시간대에 자주 지연·드롭됩니다.
-그래서 맥북 launchd 가 평일 **09:07~15:37 30분 간격(KST)** 으로 `update.yml` 을
-`workflow_dispatch` 로 직접 트리거하는 백업을 둡니다.
+GitHub Actions의 `schedule`(cron)은 best-effort라 혼잡 시간대에 자주 지연·드롭되고
+60일 비활성 시 자동 중단됩니다. 그래서 정시 트리거만 **Cloud Scheduler(정확한 cron)**
+→ **Cloud Run(얇은 트리거 서비스)** → **GitHub `workflow_dispatch`** 로 대체합니다.
+수집·빌드·발행·커밋은 여전히 GitHub Actions 워크플로에서 실행됩니다.
 
 ```
-[맥북 launchd] ──(정시에 신호만 발사)──▶ [GitHub Actions] ──▶ 수집·빌드·발행·커밋
-   알람 역할(curl 한 번)                      실제 작업은 전부 클라우드에서 실행
+[Cloud Scheduler] ──cron──▶ [Cloud Run /trigger] ──POST dispatch──▶ [GitHub Actions]
+   (정확한 시각, KST)         (PAT 보관·화이트리스트)              update.yml / summary-telegram.yml
 ```
 
-맥북은 "지금 돌려라" 신호만 보내고, 무거운 작업은 모두 GitHub 클라우드에서 돕니다.
-GitHub cron 도 그대로 두며(워크플로 `concurrency: cancel-in-progress` 라 겹쳐도 중복 실행 없음),
-맥북이 꺼져 있을 때의 백업이 됩니다.
+Cloud Scheduler 가 유일한 자동 실행원이며, 워크플로의 `schedule:` cron 은 중복 실행을
+막기 위해 비활성(주석) 상태입니다(`workflow_dispatch:` 는 트리거 통로라 유지).
 
-**구성 파일 (저장소 밖, 맥북 로컬)**
-
-| 항목 | 경로 |
-| --- | --- |
-| 트리거 스크립트 | `~/.marketsimple/dispatch.sh` |
-| launchd 정의 | `~/Library/LaunchAgents/com.marketsimple.dispatch.plist` |
-| 실행 로그 | `~/.marketsimple/dispatch.log` |
-
-`dispatch.sh` 는 PAT 를 1) macOS 키체인(`marketsimple-gh-pat`), 2) 프로젝트 `.env` 의
-`GH_DISPATCH_TOKEN` 순으로 읽어 GitHub API 를 호출합니다. PAT 는 fine-grained 토큰으로
-대상 저장소에 **Actions: Read and write** 권한이 필요합니다. (`.env` 는 `.gitignore` 에 있어 커밋되지 않음)
-
-**관리 명령 (터미널)**
-
-```bash
-launchctl load   ~/Library/LaunchAgents/com.marketsimple.dispatch.plist   # 켜기
-launchctl unload ~/Library/LaunchAgents/com.marketsimple.dispatch.plist   # 끄기
-launchctl list | grep marketsimple                                        # 동작 확인(한 줄 = ON)
-~/.marketsimple/dispatch.sh && tail -1 ~/.marketsimple/dispatch.log       # 즉시 1회 실행 테스트
-```
-
-launchd 정의는 운영체제 스케줄러라 재부팅·로그아웃에도 유지됩니다. 단, **맥북이 깨어 있을 때만**
-트리거되며 잠자기로 놓친 작업은 깨어난 직후 1회만 보충됩니다. 토큰이 만료되면 `.env` 의
-`GH_DISPATCH_TOKEN` 값만 갱신하면 됩니다.
+배포 절차·운영 명령·실배포 값은 [cloud/SCHEDULER.md](cloud/SCHEDULER.md) 를 참고하세요.
 
 ## 요약 이미지 + 텔레그램 발송
 

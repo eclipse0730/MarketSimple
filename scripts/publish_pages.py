@@ -249,10 +249,12 @@ def publish_market(market: str, title: str, only_latest: bool = False,
         day_dir.mkdir(parents=True, exist_ok=True)
         html = _rewrite_nav_links(src.read_text(encoding="utf-8"))
         _write_text(day_dir / "index.html", html)
-        # 썸네일은 새로 생기는 날짜에만 생성한다. 실패해도 OG 이미지가 404가 되지 않게
-        # 직전 날짜 썸네일을 복사한다.
+        # 최신 날짜(=오늘)는 장중 데이터가 계속 바뀌므로 매 발행마다 다시 캡처한다.
+        # (안 하면 그날 첫 실행 — 장 시작 전 0% 스냅샷 — 썸네일이 종일 박제된다)
+        # 과거 날짜는 확정본이라 썸네일이 있으면 재캡처를 건너뛴다(캡처 비용 절감).
+        # 실패/Chrome 부재 시엔 OG 404 방지를 위해 직전 날짜 썸네일을 복사한다.
         thumb = day_dir / "thumb.png"
-        if chrome and not thumb.exists():
+        if chrome and (date_str == latest or not thumb.exists()):
             _make_thumbnail(chrome, src, thumb)
         if not thumb.exists():
             _copy_fallback_thumb(out_root, day_dir, date_str)

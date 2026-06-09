@@ -99,7 +99,7 @@
       "bubbleFontSize": 12,
       "bubbleHeight": 32,
       "bubbleOffset": { "x": -12, "y": 12 },
-      "bubbleWidthMobile": 90,
+      "bubbleWidthMobile": 100,
       "bubbleFontSizeMobile": 11,
       "bubbleHeightMobile": 32,
       "bubbleOffsetMobile": { "x": -10, "y": 10 },
