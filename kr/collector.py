@@ -131,6 +131,19 @@ def collect_market_flows(date_str: str, historical: bool = False) -> dict:
     }
 
 
+def collect_market_flow_history(date_str: str, days: int = 7) -> dict:
+    """KOSPI/KOSDAQ 투자자별 순매수를 date_str 기준 최근 days 거래일치 수집한다.
+
+    네이버 매매동향 페이지는 한 응답에 여러 날짜가 들어 있어, collect_market_flows
+    가 한 줄만 쓰던 같은 표에서 최근 N일치를 그대로 뽑는다. 각 시장값은 최신순
+    리스트([{date,personal,foreign,institution}, ...])다. 단위는 억원.
+    """
+    return {
+        market: _read_investor_flow_rows(date_str, sosok)[:days]
+        for market, sosok in FLOW_MARKETS.items()
+    }
+
+
 def _collect_snapshot() -> pd.DataFrame:
     frames = []
     for market, sosok in MARKETS.items():
@@ -206,7 +219,12 @@ def _read_market_page(market: str, sosok: int, page: int) -> pd.DataFrame:
     return out[COLUMNS]
 
 
-def _read_investor_flow(date_str: str, sosok: str) -> dict:
+def _read_investor_flow_rows(date_str: str, sosok: str) -> list[dict]:
+    """매매동향 표를 받아 date_str 이하 날짜 행들을 최신순 dict 리스트로 돌려준다.
+
+    각 dict: {date(YYYYMMDD), personal, foreign, institution}. 단위 억원.
+    표는 최신일이 맨 위라 그대로 슬라이스하면 최근 N일치가 된다.
+    """
     response = requests.get(
         INVESTOR_FLOW_URL,
         params={"bizdate": date_str, "sosok": sosok, "page": 1},
@@ -224,21 +242,40 @@ def _read_investor_flow(date_str: str, sosok: str) -> dict:
     if table.empty:
         raise RuntimeError("네이버 투자자별 매매동향 결과가 비어 있습니다")
 
-    target_label = datetime.strptime(date_str, "%Y%m%d").strftime("%y.%m.%d")
-    selected = None
+    rows = []
     for row in table.itertuples(index=False, name=None):
-        if str(row[0]).strip() == target_label:
-            selected = row
-            break
-    if selected is None:
-        selected = next((row for row in table.itertuples(index=False, name=None) if not pd.isna(row[0])), None)
-    if selected is None:
+        iso = _flow_date_iso(row[0])
+        if iso is None or iso > date_str:
+            continue
+        rows.append({
+            "date": iso,
+            "personal": _to_number(row[1]) or 0,
+            "foreign": _to_number(row[2]) or 0,
+            "institution": _to_number(row[3]) or 0,
+        })
+    if not rows:
         raise RuntimeError("네이버 투자자별 매매동향 날짜 행을 찾지 못했습니다")
+    return rows
 
+
+def _flow_date_iso(cell) -> str | None:
+    """매매동향 표의 'yy.mm.dd' 날짜 셀을 'YYYYMMDD'로. 날짜가 아니면 None."""
+    if pd.isna(cell):
+        return None
+    text = str(cell).strip()
+    try:
+        return datetime.strptime(text, "%y.%m.%d").strftime("%Y%m%d")
+    except ValueError:
+        return None
+
+
+def _read_investor_flow(date_str: str, sosok: str) -> dict:
+    rows = _read_investor_flow_rows(date_str, sosok)
+    top = rows[0]
     return {
-        "personal": _to_number(selected[1]) or 0,
-        "foreign": _to_number(selected[2]) or 0,
-        "institution": _to_number(selected[3]) or 0,
+        "personal": top["personal"],
+        "foreign": top["foreign"],
+        "institution": top["institution"],
     }
 
 

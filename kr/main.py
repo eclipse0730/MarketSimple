@@ -220,6 +220,25 @@ def attach_market_flows(by_market, collector_module, date_str: str, historical: 
     return by_market
 
 
+def attach_market_flow_history(by_market, collector_module, date_str: str, days: int = 7):
+    """수급 카드 모달용 최근 7거래일 투자자별 순매수 히스토리를 붙인다(best-effort).
+
+    실패해도 본문 수급값(attach_market_flows)에는 영향이 없고, 모달만 비활성된다.
+    """
+    if not hasattr(collector_module, "collect_market_flow_history"):
+        return by_market
+    try:
+        history = collector_module.collect_market_flow_history(date_str, days=days)
+    except Exception as exc:
+        print(f"  · [안내] 투자자별 수급 히스토리 수집 실패: {exc}")
+        return by_market
+
+    for market, rows in history.items():
+        if market in by_market:
+            by_market[market]["flow_history"] = rows
+    return by_market
+
+
 def load_prev_market_frames(data_dir: str, date_str: str, days: int):
     """기준일 이전의 market_YYYYMMDD.csv 들을 최신순으로 최대 days개 로드한다.
 
@@ -373,6 +392,7 @@ def main(argv=None):
     overall, by_market = analyzer.market_strength(df, prev_df)
     by_market = attach_market_indices(by_market, data_collector, date_str, bool(args.date))
     by_market = attach_market_flows(by_market, data_collector, date_str, bool(args.date))
+    by_market = attach_market_flow_history(by_market, data_collector, date_str)
     diagnosis = analyzer.market_diagnosis(df, prev_df)
     tiers = analyzer.build_tiers(df)
     tiers_common = analyzer.build_tiers(df, common_only=True)

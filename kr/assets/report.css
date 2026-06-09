@@ -154,6 +154,11 @@
                 font-size:11px; line-height:1.1; font-weight:700; color:var(--sub); text-align:center; }
   .flow-item b { max-width:100%; overflow:hidden; text-overflow:ellipsis;
                   font-size:11.5px; font-weight:850; line-height:1.1; white-space:nowrap; }
+  /* 수급 카드 → 클릭 시 7거래일 추이 모달 */
+  .flow-open { width:100%; cursor:pointer; transition:border-color .12s ease, background .12s ease; }
+  .flow-open:hover { border-color:var(--accent);
+                      background:color-mix(in srgb, var(--accent) 8%, var(--panel)); }
+  .flow-open:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
 
   /* tiers */
   .tier-row { display:flex; gap:16px; padding:15px 0 15px 18px; position:relative;
@@ -290,6 +295,19 @@
   .gm-row .gm-rt { font-size:13px; font-weight:800; flex-shrink:0; }
   @keyframes gmFade { from{opacity:0} to{opacity:1} }
   @keyframes gmRise { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:none} }
+
+  /* 수급 추이 모달 표 (날짜 × 기관/외인/개인, 누른 주체 열 강조) */
+  .fm-panel { width:min(420px,94vw); }
+  .fm-body { overflow-y:auto; padding:2px 14px 16px; }
+  .fm-table { width:100%; border-collapse:collapse; font-family:var(--round); }
+  .fm-table th, .fm-table td { padding:8px 7px; text-align:right; font-size:12.5px; white-space:nowrap;
+                                border-bottom:1px solid color-mix(in srgb, var(--line) 72%, transparent); }
+  .fm-table th { font-weight:800; color:var(--sub); position:sticky; top:0; background:var(--panel); }
+  .fm-table td { font-weight:800; }
+  .fm-table tr:last-child td { border-bottom:0; }
+  .fm-table .fm-d { text-align:left; color:var(--faint); font-weight:700; }
+  .fm-table .fm-hl { background:color-mix(in srgb, var(--accent) 12%, transparent); }
+  .fm-table th.fm-hl { color:var(--heading); }
 
   /* themes */
   .theme-list { display:flex; flex-direction:column; gap:3px; }

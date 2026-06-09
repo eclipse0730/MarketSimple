@@ -80,19 +80,26 @@ def _strength_bar(c):
     )
 
 
-def _market_flow_row(c):
+def _market_flow_row(market, c):
     flows = [
-        ("기관", c.get("flow_institution")),
-        ("외인", c.get("flow_foreign")),
-        ("개인", c.get("flow_personal")),
+        ("기관", "institution", c.get("flow_institution")),
+        ("외인", "foreign", c.get("flow_foreign")),
+        ("개인", "personal", c.get("flow_personal")),
     ]
-    if all(value is None for _, value in flows):
+    if all(value is None for _, _, value in flows):
         return ""
-    items = "".join(
-        f'<span class="flow-item"><span>{label}</span>'
-        f'<b class="mono {_cls(value or 0)}">{_fmt_flow(value)}</b></span>'
-        for label, value in flows
-    )
+    # 7일치 히스토리가 있으면 카드를 버튼화해 클릭 시 모달을 연다.
+    has_hist = bool(c.get("flow_history"))
+    items = ""
+    for label, key, value in flows:
+        inner = (f'<span>{label}</span>'
+                 f'<b class="mono {_cls(value or 0)}">{_fmt_flow(value)}</b>')
+        if has_hist:
+            items += (f'<button type="button" class="flow-item flow-open" '
+                      f'data-fmkt="{market}" data-finv="{key}" '
+                      f'aria-label="{market} {label} 최근 수급 추이 보기">{inner}</button>')
+        else:
+            items += f'<span class="flow-item">{inner}</span>'
     return f'<div class="mkt-flow">{items}</div>'
 
 
@@ -189,7 +196,7 @@ def _section_market(by_market):
           </div>
           {_metric_cards(c)}
           {_strength_bar(c)}
-          {_market_flow_row(c)}
+          {_market_flow_row(m, c)}
         </div>"""
     return f"""
     <section class="reveal" id="sec-market">
@@ -595,6 +602,35 @@ def _group_modal_html(group_members):
     </div>"""
 
 
+def _flow_modal_html(by_market):
+    """수급 카드 클릭 시 뜨는 '최근 7거래일 투자자별 순매수' 모달.
+
+    데이터는 by_market[*]['flow_history'](최신순 행 리스트)를 그대로 주입하고,
+    표 렌더링은 flow_modal.js 가 맡는다. 히스토리가 한 시장도 없으면 비활성.
+    """
+    data = {
+        m: by_market[m]["flow_history"]
+        for m in config.MARKETS
+        if by_market.get(m, {}).get("flow_history")
+    }
+    if not data:
+        return ""
+    payload = json.dumps(data, ensure_ascii=False)
+    return f"""
+    <script id="mb-flow-data" type="application/json">{payload}</script>
+    <div class="gm-modal" id="flowModal" hidden>
+      <div class="gm-backdrop" data-fclose></div>
+      <div class="gm-panel fm-panel" role="dialog" aria-modal="true" aria-labelledby="fmTitle">
+        <div class="gm-head">
+          <h3 id="fmTitle" class="gm-title"></h3>
+          <button class="gm-x" type="button" aria-label="닫기" data-fclose>&times;</button>
+        </div>
+        <div class="gm-sub" id="fmSub"></div>
+        <div class="fm-body" id="fmBody"></div>
+      </div>
+    </div>"""
+
+
 def _date_label(date_str):
     return f"{date_str[:4]}.{date_str[4:6]}.{date_str[6:]}"
 
@@ -732,6 +768,7 @@ def write_html(path, *, date_str, session, generated_at, overall, by_market, tie
         body += _section_sector_tiers(sector_tiers, sector_market_avg, theme)
     body += _section_heatmap(big_theme, big_theme_common)
     body += _group_modal_html(group_members)
+    body += _flow_modal_html(by_market)
     html = _PAGE.format(
         date=_date_label(date_str),
         og_tags=_og_tags_html(date_str, overall),
@@ -748,6 +785,7 @@ def write_html(path, *, date_str, session, generated_at, overall, by_market, tie
         default_theme=theme_name,
         theme_ids_json=json.dumps(theme_ids(), ensure_ascii=False),
         group_modal_js=_GROUP_MODAL_JS,
+        flow_modal_js=_FLOW_MODAL_JS,
         body=body,
     )
     with open(path, "w", encoding="utf-8") as f:
@@ -759,3 +797,4 @@ _ASSET_DIR = _REPORT_DIR / "assets"
 _PAGE = _read_text(_TEMPLATE_DIR / "report.html")
 _REPORT_CSS = _read_text(_ASSET_DIR / "report.css")
 _GROUP_MODAL_JS = _script_tag(_read_text(_ASSET_DIR / "group_modal.js"))
+_FLOW_MODAL_JS = _script_tag(_read_text(_ASSET_DIR / "flow_modal.js"))
