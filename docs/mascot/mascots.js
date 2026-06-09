@@ -79,16 +79,34 @@
       }
     });
 
-    // 숨김(×) 버튼 — 이 세션 동안만 숨김(새로고침하면 복원).
-    // 숨기면 화면 좌상단 도크에 캐릭터 색의 원형 "다시 켜기" 버튼이 생기고,
-    // 그 버튼을 누르면 마스코트가 복원되고 원은 사라진다.
+    // 숨김(×) 버튼 — 숨김 상태를 localStorage 에 기억해 새로고침(자동 새로고침 포함)
+    // 후에도 유지한다. 숨기면 화면 좌상단 도크에 캐릭터 색의 원형 "다시 켜기" 버튼이
+    // 생기고, 그 버튼을 누르면 마스코트가 복원되며 저장된 숨김 상태도 해제된다.
+    function setHiddenPref(v) {
+      if (!o.hideKey) return;
+      try {
+        if (v) localStorage.setItem(o.hideKey, "1");
+        else localStorage.removeItem(o.hideKey);
+      } catch (e) {}
+    }
+    function hideMascot(persist) {
+      wrap.style.display = "none";
+      if (persist) setHiddenPref(true);
+      addRestoreDot(o.color, o.restoreLabel, function () {
+        wrap.style.display = "";
+        setHiddenPref(false);
+      });
+    }
     if (o.hideBtn) {
       o.hideBtn.addEventListener("click", function (e) {
         e.stopPropagation();
-        wrap.style.display = "none";
-        addRestoreDot(o.color, o.restoreLabel, function () { wrap.style.display = ""; });
+        hideMascot(true);
       });
     }
+    // 이전 방문에서 숨겨둔 상태면 숨김으로 시작(도크의 '다시 켜기' 버튼만 노출).
+    var startHidden = false;
+    try { startHidden = o.hideKey && localStorage.getItem(o.hideKey) === "1"; } catch (e) {}
+    if (startHidden) hideMascot(false);
 
     return { showBubble: showBubble, isOpen: bubbleOpen };
   }
@@ -283,7 +301,7 @@
     var dismissed = false;
     var api = runtime({
       wrap: parts.wrap, btn: parts.btn, bubble: bubble,
-      posKey: "mb_" + c.id + "_pos", hideBtn: parts.hide,
+      posKey: "mb_" + c.id + "_pos", hideKey: "mb_" + c.id + "_hidden", hideBtn: parts.hide,
       color: c.restoreColor, restoreLabel: c.ariaButton || c.title || c.id,
       onToggle: function (ctx) {
         if (!ctx.isOpen) { render(); ctx.showBubble(true); }
@@ -339,7 +357,7 @@
 
     var api = runtime({
       wrap: parts.wrap, btn: parts.btn, bubble: bubble,
-      posKey: "mb_" + c.id + "_pos", hideBtn: parts.hide,
+      posKey: "mb_" + c.id + "_pos", hideKey: "mb_" + c.id + "_hidden", hideBtn: parts.hide,
       color: c.restoreColor, restoreLabel: c.ariaButton || c.title || c.id,
       onToggle: function (ctx) {
         if (!ctx.isOpen) { setMode("greet"); ctx.showBubble(true); }
@@ -412,7 +430,7 @@
 
     var api = runtime({
       wrap: parts.wrap, btn: parts.btn, bubble: bubble,
-      posKey: "mb_" + c.id + "_pos", hideBtn: parts.hide,
+      posKey: "mb_" + c.id + "_pos", hideKey: "mb_" + c.id + "_hidden", hideBtn: parts.hide,
       color: c.restoreColor, restoreLabel: c.ariaButton || c.title || c.id,
       onToggle: function (ctx) {
         if (!ctx.isOpen) { render(); ctx.showBubble(true); return; }
