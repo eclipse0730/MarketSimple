@@ -81,6 +81,68 @@ def _write_text(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8")
 
 
+# 라이브로 열어둔 페이지(모바일/웹)가 배치 재발행을 감지해 '새로고침' 배너를 띄우는
+# 스니펫. GitHub Pages 는 정적 파일마다 ETag/Last-Modified 를 주므로, 자기 URL 의 그
+# 값이 처음 본 값과 달라지면 콘텐츠가 새로 발행된 것 → 배너. 옛 날짜 페이지는 내용이
+# 안 바뀌어 ETag 도 그대로라 배너가 뜨지 않는다(페이지별로 정확히 동작). 캐시 우회
+# 쿼리(?_mb=)로 엣지 캐시(max-age=600)를 건너뛰어 발행 직후 빠르게 감지한다.
+_LIVE_REFRESH = """<!--mb-live-refresh-->
+<style>
+#mb-refresh{position:fixed;left:50%;bottom:calc(18px + env(safe-area-inset-bottom));
+  transform:translate(-50%,160%);z-index:300;display:flex;align-items:center;gap:9px;
+  padding:11px 18px;border:none;border-radius:999px;cursor:pointer;font-family:inherit;
+  font-size:14px;color:#fff;background:linear-gradient(120deg,var(--up,#ff8aab),var(--accent,#d88aa8));
+  box-shadow:0 10px 30px rgba(0,0,0,.28);opacity:0;
+  transition:transform .35s cubic-bezier(.16,1,.3,1),opacity .35s ease;}
+#mb-refresh.on{transform:translate(-50%,0);opacity:1;}
+#mb-refresh span{font-weight:600;opacity:.95;}
+#mb-refresh b{font-weight:800;}
+@media (prefers-reduced-motion:reduce){#mb-refresh{transition:opacity .2s ease;}}
+</style>
+<script>
+(function(){
+  if(location.protocol==='file:') return;          /* 로컬 미리보기 제외 */
+  var POLL_MS=90000, base=null, shown=false, timer=null;
+  function sig(r){ return r.headers.get('etag')||r.headers.get('last-modified')||''; }
+  function check(){
+    fetch(location.pathname+'?_mb='+Date.now(),{method:'HEAD',cache:'no-store'})
+      .then(function(r){
+        if(!r.ok) return;
+        var s=sig(r); if(!s) return;
+        if(base===null){ base=s; return; }          /* 첫 응답을 기준으로 */
+        if(s!==base && !shown) banner();
+      }).catch(function(){});
+  }
+  function banner(){
+    shown=true; if(timer){ clearInterval(timer); timer=null; }
+    var b=document.createElement('button');
+    b.type='button'; b.id='mb-refresh'; b.setAttribute('aria-live','polite');
+    b.innerHTML='<span>새 데이터가 도착했어요</span><b>새로고침 ↻</b>';
+    b.addEventListener('click',function(){ location.reload(); });
+    document.body.appendChild(b);
+    requestAnimationFrame(function(){ b.classList.add('on'); });
+  }
+  document.addEventListener('visibilitychange',function(){
+    if(document.visibilityState==='visible' && !shown) check();
+  });
+  check();
+  timer=setInterval(function(){
+    if(document.visibilityState==='visible' && !shown) check();
+  },POLL_MS);
+})();
+</script>
+"""
+
+
+def _inject_live_refresh(html: str) -> str:
+    """발행 콘텐츠 페이지에 라이브 새로고침 배너 스니펫을 1회 주입한다(멱등)."""
+    if "mb-live-refresh" in html:
+        return html
+    if "</body>" in html:
+        return html.replace("</body>", _LIVE_REFRESH + "</body>", 1)
+    return html + _LIVE_REFRESH
+
+
 # date-nav 전체 블록(<nav class="date-nav">…</nav>). 페이지마다 하나뿐이다.
 NAV_BLOCK_RE = re.compile(r'<nav class="date-nav"[\s\S]*?</nav>')
 # 리포트와 동일한 화살표 SVG (report_shared.ARROWS 와 일치시켜야 모양이 같다)
@@ -247,7 +309,7 @@ def publish_market(market: str, title: str, only_latest: bool = False,
             continue
         day_dir = out_root / date_str
         day_dir.mkdir(parents=True, exist_ok=True)
-        html = _rewrite_nav_links(src.read_text(encoding="utf-8"))
+        html = _inject_live_refresh(_rewrite_nav_links(src.read_text(encoding="utf-8")))
         _write_text(day_dir / "index.html", html)
         # 최신 날짜(=오늘)는 장중 데이터가 계속 바뀌므로 매 발행마다 다시 캡처한다.
         # (안 하면 그날 첫 실행 — 장 시작 전 0% 스냅샷 — 썸네일이 종일 박제된다)
