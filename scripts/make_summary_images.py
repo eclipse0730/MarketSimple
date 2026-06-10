@@ -42,7 +42,7 @@ from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SCALE = 2          # device-scale-factor (선명도)
+SCALE = 3          # device-scale-factor (선명도). 3=고화질(3240px서 1080 다운샘플), 2=기존
 WIDTH = 1080       # 결과 이미지 폭(px)
 CAP_H = 5200       # 캡처 윈도우 높이(px) — 가장 긴 카드도 담기게 넉넉히
 

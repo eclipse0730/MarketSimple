@@ -9,6 +9,12 @@ on:
   #   - cron: "58 2 * * 1-5"   # 월~금 UTC 02:58 == KST 11:58 (오전장)
   #   - cron: "33 6 * * 1-5"   # 월~금 UTC 06:33 == KST 15:33 (장마감)
   workflow_dispatch:          # Cloud Run 이 이 통로로 트리거(수동 실행도 허용)
+    inputs:
+      theme:
+        description: "발송할 테마 (all=4종 전부, mode1=파스텔 등)"
+        type: choice
+        default: all
+        options: [all, mode1, mode2, mode3, mode4]
 
 concurrency:
   group: summary-telegram
@@ -63,5 +69,12 @@ jobs:
             echo "리포트 없음 → 최신 거래일($LATEST)로 폴백 빌드"
             python main.py --market kr --date "$LATEST"
           fi
-          # 3) 요약 이미지 생성(4테마 × 3장) + 테마별 즉시 텔레그램 발송
-          python -m scripts.make_summary_images
+          # 3) 요약 이미지 생성 + 테마별 즉시 텔레그램 발송.
+          #    theme 입력이 all 이면 4테마 전부, 특정 mode 면 그 테마 3장만 발송.
+          #    (Cloud Scheduler 트리거는 입력을 주지 않으므로 THEME 가 비어 전체 발송)
+          THEME="${{ github.event.inputs.theme }}"
+          if [ -n "$THEME" ] && [ "$THEME" != "all" ]; then
+            python -m scripts.make_summary_images --theme "$THEME"
+          else
+            python -m scripts.make_summary_images
+          fi
