@@ -247,6 +247,38 @@ def top_trading_value(df, n=30, common_only=False):
     return ranked.reset_index(drop=True)
 
 
+def investor_deal_top(deal_df, market_df, investor, side, n=10):
+    """기관/외국인 순매수·순매도 거래상위(순매매 금액 기준) n개 종목을 반환.
+
+    deal_df  : collect_investor_deal 결과 (종목코드·투자자·방향·순매매금액)
+    market_df: 당일 스냅샷 (종목코드·등락률) — 등락률 보강용
+    investor : "institution" 또는 "foreign"
+    side     : "buy"(순매수) 또는 "sell"(순매도)
+
+    네이버가 제공하는 실제 순매매 '금액'(원, 추정 아님) 기준 상위라, 그 순서를
+    그대로 따른다. (수량 기준으로 정렬하면 저가 인버스 ETF 가 상위를 점령해
+    매매 강도가 왜곡되므로 쓰지 않는다.)
+
+    반환 컬럼: 종목코드, 종목명, 시장, 등락률, 순매매금액
+    """
+    cols = ["종목코드", "종목명", "시장", "등락률", "순매매금액"]
+    if deal_df is None or not len(deal_df):
+        return pd.DataFrame(columns=cols)
+
+    sub = deal_df[(deal_df["투자자"] == investor) & (deal_df["방향"] == side)].copy()
+    if sub.empty:
+        return pd.DataFrame(columns=cols)
+    sub["종목코드"] = sub["종목코드"].astype(str).str.zfill(6)
+
+    # 등락률은 당일 스냅샷에서 가져온다(순매매 페이지엔 없음).
+    rate = market_df[["종목코드", "등락률"]].copy()
+    rate["종목코드"] = rate["종목코드"].astype(str).str.zfill(6)
+    merged = sub.merge(rate, on="종목코드", how="left")
+
+    ranked = merged.sort_values("순매매금액", ascending=False).head(n)
+    return ranked[cols].reset_index(drop=True)
+
+
 def volume_surge_top(df, prev_dfs, n=None, common_only=False):
     """당일 거래량 / 최근 거래일 평균 거래량 = '거래량 배율' 상위 n개를 반환.
 

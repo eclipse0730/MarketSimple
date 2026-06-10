@@ -14,7 +14,6 @@ import re
 import sys
 import time
 from datetime import datetime
-from html import unescape
 
 import pandas as pd
 
@@ -88,94 +87,6 @@ def load_big_theme_map():
     return big
 
 
-def _to_float_text(text):
-    text = unescape(str(text)).replace(",", "").replace("%", "").replace("억", "").strip()
-    if text in ("", "N/A"):
-        return None
-    try:
-        return float(text)
-    except ValueError:
-        return None
-
-
-def load_local_market_indices(date_str: str):
-    """네이버 지수 수집 실패 시 같은 날짜 로컬 HTML에서 지수 값을 복구한다."""
-    candidates = [
-        os.path.join("docs", config.MARKET_KEY, date_str, "index.html"),
-        os.path.join(config.OUTPUT_DIR, config.REPORT_OUTPUT_DIR, config.report_filename(date_str)),
-    ]
-    block_re = re.compile(
-        r"<h3>(KOSPI|KOSDAQ)</h3>.*?"
-        r'<span class="mkt-index mono">([^<]+)</span>.*?'
-        r'<span class="mkt-rate mono [^"]+">([^<]+)</span>.*?'
-        r'<span class="mkt-change mono [^"]+">([^<]+)</span>',
-        re.S,
-    )
-
-    for path in candidates:
-        if not os.path.exists(path):
-            continue
-        try:
-            with open(path, encoding="utf-8") as f:
-                html = f.read()
-        except OSError:
-            continue
-
-        indices = {}
-        for market, value, rate, change in block_re.findall(html):
-            parsed = {
-                "value": _to_float_text(value),
-                "rate": _to_float_text(rate),
-                "change": _to_float_text(change),
-            }
-            if all(v is not None for v in parsed.values()):
-                indices[market] = parsed
-        if indices:
-            print(f"  · [안내] 로컬 HTML 지수값 사용: {path}")
-            return indices
-    return {}
-
-
-def load_local_market_flows(date_str: str):
-    """네이버 수급 수집 실패 시 같은 날짜 로컬 HTML에서 투자자별 수급을 복구한다."""
-    candidates = [
-        os.path.join("docs", config.MARKET_KEY, date_str, "index.html"),
-        os.path.join(config.OUTPUT_DIR, config.REPORT_OUTPUT_DIR, config.report_filename(date_str)),
-    ]
-    card_re = re.compile(
-        r'<div class="mkt-card">.*?<h3>(KOSPI|KOSDAQ)</h3>.*?'
-        r'<div class="mkt-flow">(.*?)</div>',
-        re.S,
-    )
-    item_re = re.compile(
-        r'<span class="flow-item"><span>(기관|외인|개인)</span>'
-        r'<b class="mono [^"]+">([^<]+)</b></span>',
-        re.S,
-    )
-    key_map = {"기관": "institution", "외인": "foreign", "개인": "personal"}
-
-    for path in candidates:
-        if not os.path.exists(path):
-            continue
-        try:
-            with open(path, encoding="utf-8") as f:
-                html = f.read()
-        except OSError:
-            continue
-
-        flows = {}
-        for market, flow_html in card_re.findall(html):
-            parsed = {}
-            for label, value in item_re.findall(flow_html):
-                parsed[key_map[label]] = _to_float_text(value)
-            if parsed:
-                flows[market] = parsed
-        if flows:
-            print(f"  · [안내] 로컬 HTML 수급값 사용: {path}")
-            return flows
-    return {}
-
-
 def attach_market_indices(by_market, collector_module, date_str: str, historical: bool):
     if not hasattr(collector_module, "collect_market_indices"):
         return by_market
@@ -184,7 +95,7 @@ def attach_market_indices(by_market, collector_module, date_str: str, historical
         indices = collector_module.collect_market_indices(date_str, historical=historical)
     except Exception as exc:
         print(f"  · [안내] 시장 지수 수집 실패: {exc}")
-        indices = load_local_market_indices(date_str)
+        indices = collector_module.load_local_market_indices(date_str)
         if not indices:
             return by_market
 
@@ -206,7 +117,7 @@ def attach_market_flows(by_market, collector_module, date_str: str, historical: 
         flows = collector_module.collect_market_flows(date_str, historical=historical)
     except Exception as exc:
         print(f"  · [안내] 투자자별 수급 수집 실패: {exc}")
-        flows = load_local_market_flows(date_str)
+        flows = collector_module.load_local_market_flows(date_str)
         if not flows:
             return by_market
 
@@ -399,6 +310,23 @@ def main(argv=None):
     top_value = analyzer.top_trading_value(df, n=30)
     top_value_common = analyzer.top_trading_value(df, n=30, common_only=True)
 
+    # 기관·외인 순매수/순매도 추정 금액 상위 Top10(당일 기준). 과거(--date)
+    # 빌드에선 네이버가 당일 데이터만 줘 빈 값이라 섹션이 생략된다.
+    inst_buy = foreign_buy = inst_sell = foreign_sell = None
+    try:
+        deal_df = data_collector.collect_investor_deal(date_str, historical=bool(args.date))
+        if len(deal_df):
+            inst_buy = analyzer.investor_deal_top(deal_df, df, "institution", "buy", n=12)
+            foreign_buy = analyzer.investor_deal_top(deal_df, df, "foreign", "buy", n=12)
+            inst_sell = analyzer.investor_deal_top(deal_df, df, "institution", "sell", n=12)
+            foreign_sell = analyzer.investor_deal_top(deal_df, df, "foreign", "sell", n=12)
+            print(f"  · 순매수: 기관 {len(inst_buy)} · 외인 {len(foreign_buy)} / "
+                  f"순매도: 기관 {len(inst_sell)} · 외인 {len(foreign_sell)} (추정 금액=수량×종가)")
+        else:
+            print("  · 순매수/순매도: 당일 데이터 없음 — 섹션 생략")
+    except Exception as exc:
+        print(f"  · [안내] 순매매 수집 실패: {exc} — 섹션 생략")
+
     if len(prev_frames) >= config.VOLUME_SURGE_MIN_DAYS:
         top_volume = analyzer.volume_surge_top(df, prev_frames)
         top_volume_common = analyzer.volume_surge_top(df, prev_frames, common_only=True)
@@ -438,7 +366,7 @@ def main(argv=None):
         generated_at=datetime.now().strftime("%Y-%m-%d %H:%M"),
         overall=overall,
         by_market=by_market,
-        diagnosis=diagnosis,
+        #diagnosis=diagnosis,
         tiers=tiers,
         tiers_common=tiers_common,
         sector_tiers=sector_tiers,
@@ -450,6 +378,10 @@ def main(argv=None):
         top_value_common=top_value_common,
         top_volume=top_volume,
         top_volume_common=top_volume_common,
+        inst_buy=inst_buy,
+        foreign_buy=foreign_buy,
+        inst_sell=inst_sell,
+        foreign_sell=foreign_sell,
         date_nav=date_nav,
     )
 

@@ -135,6 +135,18 @@ def _section_icon(name, label):
         "tier": (
             '<path d="M12 4.7l2.1 4.2 4.6.7-3.3 3.2.8 4.6-4.2-2.2-4.2 2.2.8-4.6-3.3-3.2 4.6-.7z"/>'
         ),
+        "buy": (
+            '<circle cx="9" cy="8" r="2.6"/>'
+            '<path d="M4.5 18.5c0-2.7 2-4.5 4.5-4.5s4.5 1.8 4.5 4.5"/>'
+            '<path d="M16.5 7.5v6"/>'
+            '<path d="M14 10l2.5-2.5L19 10"/>'
+        ),
+        "sell": (
+            '<circle cx="9" cy="8" r="2.6"/>'
+            '<path d="M4.5 18.5c0-2.7 2-4.5 4.5-4.5s4.5 1.8 4.5 4.5"/>'
+            '<path d="M16.5 13.5v-6"/>'
+            '<path d="M14 11l2.5 2.5L19 11"/>'
+        ),
         "sector": (
             '<rect x="5" y="5" width="5.5" height="5.5" rx="1.4"/>'
             '<rect x="13.5" y="5" width="5.5" height="5.5" rx="1.4"/>'
@@ -340,13 +352,17 @@ def _tier_rows(tiers, theme):
     return rows
 
 
-def _rep_switch(toggle_id):
-    """보통주(기본) ↔ 전종목 토글 스위치 + 숨김 체크박스."""
+def _rep_switch(toggle_id, left="보통주", right="전종목"):
+    """좌(기본) ↔ 우 토글 스위치 + 숨김 체크박스.
+
+    기본 라벨은 보통주↔전종목이지만, left/right 로 바꿔 다른 2분할 전환
+    (예: 기관↔외인)에도 같은 CSS 메커니즘을 재사용한다.
+    """
     toggle = f'<input type="checkbox" class="rep-toggle" id="{toggle_id}">'
     switch = f"""
         <label class="rep-switch" for="{toggle_id}">
-          <span class="seg seg-l">보통주</span>
-          <span class="seg seg-r">전종목</span>
+          <span class="seg seg-l">{left}</span>
+          <span class="seg seg-r">{right}</span>
         </label>"""
     return toggle, switch
 
@@ -463,6 +479,60 @@ def _section_top_volume(top_volume, top_volume_common=None):
         all_rows=top_volume, common_rows=top_volume_common,
         toggle_id="tvolToggle", meta_fn=_tv_volume_meta,
     )
+
+
+def _tv_deal_meta(r):
+    """순매수·순매도 섹션 메타: 등락률 + 순매매 금액(억/조)."""
+    cls = _cls(r.등락률)
+    return (
+        f'<span class="tv-rate mono {cls}">{_fmt(r.등락률)}%</span>'
+        f'<span class="tv-a mono">{_fmt_amount(r.순매매금액)}</span>'
+    )
+
+
+def _deal_col(label, rows):
+    """투자자 한 명(기관/외인)의 Top10 세로 리스트 한 열."""
+    chips = "".join(_tv_chip(i + 1, r, _tv_deal_meta) for i, r in enumerate(rows.itertuples()))
+    return f'<div class="deal-col"><div class="deal-col-head">{label}</div>{chips}</div>'
+
+
+def _deal_view(view_cls, inst_rows, foreign_rows):
+    """한 방향(순매수 또는 순매도)의 좌(기관)·우(외인) 2열 뷰."""
+    return (
+        f'<div class="deal-view {view_cls}">'
+        f'{_deal_col("기관", inst_rows)}'
+        f'{_deal_col("외인", foreign_rows)}'
+        f'</div>'
+    )
+
+
+def _section_investor_deal(inst_buy, foreign_buy, inst_sell, foreign_sell):
+    """기관·외인 순매매 통합 섹션.
+
+    좌=기관 Top10 / 우=외인 Top10 의 2열을 한 뷰로 묶고, 순매수↔순매도 토글
+    하나로 양쪽 열을 동시에 전환한다. 기본 표시는 순매수(deal-buy),
+    토글 체크 시 순매도(deal-sell)로 바뀐다(_rep_switch 의 .rep-toggle 재활용).
+    """
+    has_buy = (inst_buy is not None and len(inst_buy)) or (foreign_buy is not None and len(foreign_buy))
+    has_sell = (inst_sell is not None and len(inst_sell)) or (foreign_sell is not None and len(foreign_sell))
+    if not has_buy and not has_sell:
+        return ""
+
+    buy_view = _deal_view("deal-buy", inst_buy, foreign_buy) if has_buy else ""
+    sell_view = _deal_view("deal-sell", inst_sell, foreign_sell) if has_sell else ""
+
+    if has_buy and has_sell:
+        toggle, switch = _rep_switch("dealToggle", left="순매수", right="순매도")
+    else:
+        toggle = switch = ""
+
+    return f"""
+    <section class="reveal tv-section" id="sec-deal">
+      {toggle}
+      <div class="sec-head">{_section_icon("buy", "기관·외인 순매매")}<h2>기관·외인 순매매</h2>{switch}</div>
+      {buy_view}
+      {sell_view}
+    </section>"""
 
 
 def _sector_chip(row):
@@ -757,12 +827,13 @@ def _date_nav_html(date_str, date_nav):
     )
 
 
-def write_html(path, *, date_str, session, generated_at, overall, by_market, tiers, diagnosis=None, top=None, bottom=None, sector_top=None, sector_bottom=None, sector_tiers=None, sector_market_avg=None, big_theme=None, big_theme_common=None, group_members=None, top_value=None, top_value_common=None, top_volume=None, top_volume_common=None, tiers_common=None, date_nav=None, theme_name=DEFAULT_THEME):
+def write_html(path, *, date_str, session, generated_at, overall, by_market, tiers, diagnosis=None, top=None, bottom=None, sector_top=None, sector_bottom=None, sector_tiers=None, sector_market_avg=None, big_theme=None, big_theme_common=None, group_members=None, top_value=None, top_value_common=None, top_volume=None, top_volume_common=None, inst_buy=None, foreign_buy=None, inst_sell=None, foreign_sell=None, tiers_common=None, date_nav=None, theme_name=DEFAULT_THEME):
     theme = get_theme(theme_name)
     body = _section_market(by_market)
     body += _section_diagnosis(diagnosis)
     body += _section_top_value(top_value, top_value_common)
     body += _section_top_volume(top_volume, top_volume_common)
+    body += _section_investor_deal(inst_buy, foreign_buy, inst_sell, foreign_sell)
     body += _section_tiers(tiers, theme, tiers_common)
     if sector_tiers:
         body += _section_sector_tiers(sector_tiers, sector_market_avg, theme)

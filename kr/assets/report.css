@@ -371,6 +371,21 @@
   .rep-toggle:checked ~ .tv-chips.tv-common { display:none; }
   .rep-toggle:checked ~ .tv-chips.tv-all { display:grid; }
 
+  /* 순매매 통합 섹션: 좌(기관)·우(외인) 2열, 토글로 순매수↔순매도 전환.
+     두 열 사이는 가운데 세로 구분선으로 나눈다(첫 열 오른쪽 border). */
+  .deal-view { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:26px; }
+  .deal-view.deal-sell { display:none; }
+  .rep-toggle:checked ~ .deal-view.deal-buy { display:none; }
+  .rep-toggle:checked ~ .deal-view.deal-sell { display:grid; }
+  .deal-col { display:flex; flex-direction:column; gap:9px; min-width:0; }
+  .deal-view > .deal-col:first-child { border-right:1px solid var(--line); padding-right:26px; }
+  .deal-col-head { font-family:var(--round); font-size:13px; font-weight:800;
+                    color:var(--sub); letter-spacing:.02em; padding:2px 4px 4px; }
+  .deal-col > .tv-chip { height:auto; }
+  .deal-col > .tv-chip:nth-child(2) .tv-r { background:linear-gradient(135deg,#ffe18a,#f4b83f); color:#6b4a00; }
+  .deal-col > .tv-chip:nth-child(3) .tv-r { background:linear-gradient(135deg,#f3f4f6,#b8c0cc); color:#4f5968; }
+  .deal-col > .tv-chip:nth-child(4) .tv-r { background:linear-gradient(135deg,#f8d8b0,#e0a978); color:#5b3a1c; }
+
   .tv-chip { position:relative; display:flex; flex-direction:column; justify-content:center; gap:7px; text-decoration:none;
               border-radius:16px; padding:10px 12px 10px 14px; min-width:0; width:100%; overflow:hidden;
               background:linear-gradient(180deg,var(--panel2),var(--chip-base)); border:1px solid var(--line);

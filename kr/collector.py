@@ -10,18 +10,36 @@
 from __future__ import annotations
 
 import ast
+import os
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
+from html import unescape
 from io import StringIO
 
 import pandas as pd
 import requests
 
+from . import config
+
 COLUMNS = ["종목코드", "종목명", "시장", "현재가", "등락률", "거래량", "거래대금", "시가총액", "상장주식수"]
 THEME_COLUMNS = ["종목코드", "종목명", "테마"]
 SECTOR_COLUMNS = ["종목코드", "종목명", "섹터"]
+INVESTOR_DEAL_COLUMNS = ["종목코드", "종목명", "시장", "투자자", "방향", "순매매금액"]
+
+# sise_deal_rank_iframe.naver 한 행(<tr>): 종목명 링크 + number 컬럼 3개
+# (순매매 수량 / 순매매 금액 / 당일거래량). 둘째 number(금액·백만원, 순매도는 음수)를
+# 금액 기준으로 쓴다.
+#
+# 주의: 이 페이지는 한 응답에 '직전 거래일'과 '당일' 두 날짜 표를 모두 담고,
+# 각 표 앞에 YY.MM.DD 라벨이 붙는다. 두 표를 다 읽으면 다른 날짜 데이터가 섞여
+# 한 종목이 순매수·순매도 양쪽 1위로 잡히는 오류가 난다. 그래서 기준일(date)
+# 라벨에 해당하는 표만 파싱한다.
+_DEAL_RANK_DATE_RE = re.compile(r"\d{2}\.\d{2}\.\d{2}")
+_DEAL_RANK_TR_RE = re.compile(r"<tr>(.*?)</tr>", re.S)
+_DEAL_RANK_CODE_RE = re.compile(r'/item/main\.naver\?code=(\d{6})"[^>]*>([^<]+)</a>')
+_DEAL_RANK_NUM_RE = re.compile(r'<td class="number">(-?[\d,]+)</td>')
 
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -29,8 +47,15 @@ USER_AGENT = (
 )
 MARKETS = {"KOSPI": 0, "KOSDAQ": 1}
 FLOW_MARKETS = {"KOSPI": "01", "KOSDAQ": "02"}
+# 투자자 순매매 거래상위 페이지의 sosok 코드(01=코스피, 02=코스닥)와 투자자 구분 코드.
+DEAL_RANK_MARKETS = {"KOSPI": "01", "KOSDAQ": "02"}
+DEAL_RANK_INVESTORS = {"institution": "1000", "foreign": "9000"}
+# 순매수(buy)·순매도(sell) 두 방향. 바깥 sise_deal_rank.naver 는 iframe 껍데기뿐이라
+# 실제 데이터가 든 iframe URL을 직접 호출한다(type 파라미터가 여기서만 동작).
+DEAL_RANK_SIDES = {"buy": "buy", "sell": "sell"}
 MARKET_SUM_URL = "https://finance.naver.com/sise/sise_market_sum.naver"
 INVESTOR_FLOW_URL = "https://finance.naver.com/sise/investorDealTrendDay.naver"
+DEAL_RANK_URL = "https://finance.naver.com/sise/sise_deal_rank_iframe.naver"
 DAILY_URL = "https://api.finance.naver.com/siseJson.naver"
 SECTOR_LIST_URL = "https://finance.naver.com/sise/sise_group.naver"
 SECTOR_DETAIL_URL = "https://finance.naver.com/sise/sise_group_detail.naver"
@@ -142,6 +167,189 @@ def collect_market_flow_history(date_str: str, days: int = 7) -> dict:
         market: _read_investor_flow_rows(date_str, sosok)[:days]
         for market, sosok in FLOW_MARKETS.items()
     }
+
+
+# ── 로컬 리포트 폴백 ──────────────────────────────────────────
+# 네이버 수집이 실패했을 때, 같은 날짜로 이미 만들어둔 로컬 리포트 HTML 에서
+# 지수·수급 값을 정규식으로 복구한다. 이 정규식은 report_shared 가 생성하는
+# 마크업(class="mkt-index", "flow-item" 등)에 의존하므로, 거기 구조가 바뀌면
+# 같이 손봐야 한다.
+
+def _local_report_candidates(date_str: str) -> list[str]:
+    return [
+        os.path.join("docs", config.MARKET_KEY, date_str, "index.html"),
+        os.path.join(config.OUTPUT_DIR, config.REPORT_OUTPUT_DIR, config.report_filename(date_str)),
+    ]
+
+
+def _read_local_report(path: str) -> str | None:
+    if not os.path.exists(path):
+        return None
+    try:
+        with open(path, encoding="utf-8") as f:
+            return f.read()
+    except OSError:
+        return None
+
+
+def _html_to_float(text):
+    """리포트 HTML 안의 숫자 텍스트(콤마·%·억·HTML 엔티티 포함)를 float 으로."""
+    text = unescape(str(text)).replace(",", "").replace("%", "").replace("억", "").strip()
+    if text in ("", "N/A"):
+        return None
+    try:
+        return float(text)
+    except ValueError:
+        return None
+
+
+_LOCAL_INDEX_RE = re.compile(
+    r"<h3>(KOSPI|KOSDAQ)</h3>.*?"
+    r'<span class="mkt-index mono">([^<]+)</span>.*?'
+    r'<span class="mkt-rate mono [^"]+">([^<]+)</span>.*?'
+    r'<span class="mkt-change mono [^"]+">([^<]+)</span>',
+    re.S,
+)
+_LOCAL_FLOW_CARD_RE = re.compile(
+    r'<div class="mkt-card">.*?<h3>(KOSPI|KOSDAQ)</h3>.*?'
+    r'<div class="mkt-flow">(.*?)</div>',
+    re.S,
+)
+_LOCAL_FLOW_ITEM_RE = re.compile(
+    r'<span class="flow-item"><span>(기관|외인|개인)</span>'
+    r'<b class="mono [^"]+">([^<]+)</b></span>',
+    re.S,
+)
+_LOCAL_FLOW_KEY = {"기관": "institution", "외인": "foreign", "개인": "personal"}
+
+
+def load_local_market_indices(date_str: str) -> dict:
+    """네이버 지수 수집 실패 시 같은 날짜 로컬 HTML에서 지수 값을 복구한다."""
+    for path in _local_report_candidates(date_str):
+        html = _read_local_report(path)
+        if html is None:
+            continue
+
+        indices = {}
+        for market, value, rate, change in _LOCAL_INDEX_RE.findall(html):
+            parsed = {
+                "value": _html_to_float(value),
+                "rate": _html_to_float(rate),
+                "change": _html_to_float(change),
+            }
+            if all(v is not None for v in parsed.values()):
+                indices[market] = parsed
+        if indices:
+            print(f"  · [안내] 로컬 HTML 지수값 사용: {path}")
+            return indices
+    return {}
+
+
+def load_local_market_flows(date_str: str) -> dict:
+    """네이버 수급 수집 실패 시 같은 날짜 로컬 HTML에서 투자자별 수급을 복구한다."""
+    for path in _local_report_candidates(date_str):
+        html = _read_local_report(path)
+        if html is None:
+            continue
+
+        flows = {}
+        for market, flow_html in _LOCAL_FLOW_CARD_RE.findall(html):
+            parsed = {}
+            for label, value in _LOCAL_FLOW_ITEM_RE.findall(flow_html):
+                parsed[_LOCAL_FLOW_KEY[label]] = _html_to_float(value)
+            if parsed:
+                flows[market] = parsed
+        if flows:
+            print(f"  · [안내] 로컬 HTML 수급값 사용: {path}")
+            return flows
+    return {}
+
+
+def collect_investor_deal(date_str: str, historical: bool = False) -> pd.DataFrame:
+    """기관·외국인 순매수·순매도 거래상위 종목을 수집한다.
+
+    네이버 `sise_deal_rank_iframe.naver` 페이지는 시장(코스피/코스닥)·투자자
+    (기관/외국인)·방향(순매수/순매도)별 거래상위 종목과 실제 순매매 '금액'
+    (백만원)을 제공한다. 한 응답에 직전 거래일·당일 두 날짜 표가 섞여 있어
+    기준일(date_str) 라벨에 해당하는 표만 골라 읽는다(_read_deal_rank).
+
+    과거(historical=True, 기준일 ≠ 오늘)에는 이 페이지가 당일 기준이라
+    빈 DataFrame 을 반환한다.
+
+    반환 컬럼: 종목코드, 종목명, 시장, 투자자(institution/foreign),
+              방향(buy/sell), 순매매금액(원)
+    """
+    today = datetime.now().strftime("%Y%m%d")
+    if historical and date_str != today:
+        return pd.DataFrame(columns=INVESTOR_DEAL_COLUMNS)
+
+    rows = []
+    for investor, gubun in DEAL_RANK_INVESTORS.items():
+        for side in DEAL_RANK_SIDES:
+            for market, sosok in DEAL_RANK_MARKETS.items():
+                for code, name, amount in _read_deal_rank(sosok, gubun, side, date_str):
+                    rows.append((code, name, market, investor, side, amount))
+
+    if not rows:
+        return pd.DataFrame(columns=INVESTOR_DEAL_COLUMNS)
+
+    out = pd.DataFrame(rows, columns=INVESTOR_DEAL_COLUMNS)
+    out["종목코드"] = out["종목코드"].astype(str).str.zfill(6)
+    out["종목명"] = out["종목명"].astype(str).str.strip()
+    # 투자자·방향·종목 단위로 중복 제거(같은 종목이 양 시장에 겹칠 일은 없지만 안전망).
+    out = out.drop_duplicates(subset=["투자자", "방향", "종목코드"]).reset_index(drop=True)
+    return out[INVESTOR_DEAL_COLUMNS]
+
+
+def _read_deal_rank(sosok: str, gubun: str, side: str, date_str: str) -> list[tuple[str, str, int]]:
+    response = requests.get(
+        DEAL_RANK_URL,
+        params={"sosok": sosok, "investor_gubun": gubun, "type": side},
+        headers={"User-Agent": USER_AGENT},
+        timeout=20,
+    )
+    response.raise_for_status()
+    response.encoding = "euc-kr"
+
+    html = _deal_rank_section_for(response.text, date_str)
+
+    rows = []
+    for tr in _DEAL_RANK_TR_RE.findall(html):
+        code_match = _DEAL_RANK_CODE_RE.search(tr)
+        nums = _DEAL_RANK_NUM_RE.findall(tr)
+        if not code_match or len(nums) < 2:
+            continue
+        code, name = code_match.group(1), code_match.group(2)
+        amount = _to_number(nums[1])   # 둘째 number = 순매매 금액(백만원, 순매도는 음수)
+        if amount:
+            # 원 단위로 환산해 저장(거래대금과 같은 억/조 표기 재사용). 크기로 비교·표시.
+            rows.append((code, name.strip(), abs(amount) * 1_000_000))
+    return rows
+
+
+def _deal_rank_section_for(html: str, date_str: str) -> str:
+    """기준일 표만 남기도록 HTML 을 날짜 라벨(YY.MM.DD) 경계로 자른다.
+
+    페이지에 직전 거래일·당일 두 날짜 표가 섞여 있어, 날짜 라벨로 구간을 나눈 뒤
+    기준일에 해당하는 구간만 반환한다. 라벨이 없거나(단일 날짜) 매칭 실패 시엔
+    가장 마지막(최신) 구간을 반환한다(빈손 방지).
+    """
+    marks = list(_DEAL_RANK_DATE_RE.finditer(html))
+    if not marks:
+        return html
+
+    target = datetime.strptime(date_str, "%Y%m%d").strftime("%y.%m.%d")
+    # 각 라벨 위치에서 다음 라벨 직전까지를 한 구간으로 본다.
+    segments = []
+    for i, m in enumerate(marks):
+        start = m.start()
+        end = marks[i + 1].start() if i + 1 < len(marks) else len(html)
+        segments.append((m.group(0), html[start:end]))
+
+    for label, seg in segments:
+        if label == target:
+            return seg
+    return segments[-1][1]   # 매칭 실패 → 최신 구간
 
 
 def _collect_snapshot() -> pd.DataFrame:
