@@ -470,6 +470,22 @@
     .tv-meta { gap:7px; }
     .tv-rate { font-size:11.5px; padding:3px 5px; }
     .tv-a { font-size:12px; }
+    /* 순매매: 좁은 화면에서도 기관·외인 비교를 위해 2열을 유지하되, 간격·가운데
+       구분선 여백을 줄여 칩 폭을 확보한다. 폭이 좁은 deal-col 칩에는 전역 .tv-chip
+       의 가로배치(≤430px, .tv-meta flex:0 0 120px)가 상속되면 종목명 자리가 사라지므로
+       세로 컴팩트 레이아웃(이름 위 / 등락률·금액 아래)으로 고정한다. */
+    .deal-view { gap:10px; }
+    .deal-view > .deal-col:first-child { padding-right:10px; }
+    .deal-col { gap:7px; }
+    .deal-col-head { font-size:12px; padding:2px 2px 3px; }
+    .deal-col > .tv-chip { flex-direction:column; align-items:stretch;
+                            min-height:0; padding:8px 9px; gap:5px; }
+    .deal-col > .tv-chip .tv-top { gap:6px; }
+    .deal-col > .tv-chip .tv-r { min-width:19px; height:19px; font-size:11px; }
+    .deal-col > .tv-chip .tv-n { font-size:11.5px; }
+    .deal-col > .tv-chip .tv-meta { flex:0 0 auto; flex-direction:row; justify-content:space-between; gap:5px; }
+    .deal-col > .tv-chip .tv-rate { flex:0 0 auto; font-size:10.5px; padding:0; }
+    .deal-col > .tv-chip .tv-a { font-size:11px; margin-left:auto; }
     .tier-row {
       display:block;
       padding-left:14px;
