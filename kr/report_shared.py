@@ -187,6 +187,55 @@ def _metric_cards(c):
           </div>"""
 
 
+def _market_sparkline(c):
+    """장중 지수 흐름 미니 차트(면적형 + 전일 종가 기준선).
+
+    c["intraday"](09:00→현재 종가 리스트)를 고정 viewBox SVG로 그린다. 전일 종가
+    (=index_value-index_change)에 점선 기준선을 깔고, 현재가가 그 위면 강세(up)·
+    아래면 약세(down) 색으로 면적을 채운다. preserveAspectRatio=none 으로 카드 폭에
+    맞춰 늘이되, 선은 CSS vector-effect 로 굵기를 일정하게 유지한다. 데이터가 없거나
+    포인트가 2개 미만이면(과거 빌드 등) 아무것도 그리지 않는다."""
+    series = c.get("intraday")
+    if not series or len(series) < 2:
+        return ""
+
+    value, change = c.get("index_value"), c.get("index_change")
+    prev_close = (value - change) if (value is not None and change is not None) else None
+
+    W, H = 100.0, 32.0
+    bounds = list(series) + ([prev_close] if prev_close is not None else [])
+    lo, hi = min(bounds), max(bounds)
+    if hi == lo:
+        hi = lo + 1.0
+    pad = (hi - lo) * 0.14
+    lo, hi = lo - pad, hi + pad
+
+    def x(i):
+        return round(i / (len(series) - 1) * W, 2)
+
+    def y(v):
+        return round(H - (v - lo) / (hi - lo) * H, 2)
+
+    pts = [(x(i), y(v)) for i, v in enumerate(series)]
+    line = "M" + " L".join(f"{px},{py}" for px, py in pts)
+    area = f"M{pts[0][0]},{H} L" + " L".join(f"{px},{py}" for px, py in pts) + f" L{pts[-1][0]},{H} Z"
+
+    cls = "up" if (prev_close is None or series[-1] >= prev_close) else "down"
+    base = ""
+    if prev_close is not None:
+        by = y(prev_close)
+        base = f'<line class="mkt-spark-base" x1="0" y1="{by}" x2="{W}" y2="{by}"/>'
+
+    return (
+        f'<div class="mkt-spark {cls}">'
+        f'<svg viewBox="0 0 {W:g} {H:g}" preserveAspectRatio="none" aria-hidden="true">'
+        f'<path class="mkt-spark-area" d="{area}"/>'
+        f'{base}'
+        f'<path class="mkt-spark-line" d="{line}"/>'
+        f'</svg></div>'
+    )
+
+
 def _section_market(by_market):
     cards = ""
     for m in config.MARKETS:
@@ -198,13 +247,16 @@ def _section_market(by_market):
         index_change_label = _fmt(index_change) if index_change is not None else "N/A"
         cards += f"""
         <div class="mkt-card">
-          <div class="mkt-head">
-            <h3>{m}</h3>
-            <span class="mkt-head-idx">
-              <span class="mkt-index mono">{_fmt_index(c.get('index_value'))}</span>
-              <span class="mkt-rate mono {rate_cls}">{index_rate_label}</span>
-              <span class="mkt-change mono {rate_cls}">{index_change_label}</span>
-            </span>
+          <div class="mkt-top">
+            <div class="mkt-info">
+              <h3>{m}</h3>
+              <span class="mkt-head-idx">
+                <span class="mkt-index mono">{_fmt_index(c.get('index_value'))}</span>
+                <span class="mkt-rate mono {rate_cls}">{index_rate_label}</span>
+                <span class="mkt-change mono {rate_cls}">{index_change_label}</span>
+              </span>
+            </div>
+            {_market_sparkline(c)}
           </div>
           {_metric_cards(c)}
           {_strength_bar(c)}

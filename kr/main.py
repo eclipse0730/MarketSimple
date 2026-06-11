@@ -150,6 +150,25 @@ def attach_market_flow_history(by_market, collector_module, date_str: str, days:
     return by_market
 
 
+def attach_market_intraday(by_market, collector_module, date_str: str, historical: bool):
+    """카드 미니 차트용 장중 분봉 지수 시계열을 붙인다(best-effort).
+
+    실패하거나 과거 빌드라 데이터가 없으면 차트만 생략되고 카드 본문엔 영향 없다.
+    """
+    if not hasattr(collector_module, "collect_index_intraday"):
+        return by_market
+    try:
+        series = collector_module.collect_index_intraday(date_str, historical=historical)
+    except Exception as exc:
+        print(f"  · [안내] 장중 지수 시계열 수집 실패: {exc}")
+        return by_market
+
+    for market, points in series.items():
+        if market in by_market and points:
+            by_market[market]["intraday"] = points
+    return by_market
+
+
 def load_prev_market_frames(data_dir: str, date_str: str, days: int):
     """기준일 이전의 market_YYYYMMDD.csv 들을 최신순으로 최대 days개 로드한다.
 
@@ -304,6 +323,7 @@ def main(argv=None):
     by_market = attach_market_indices(by_market, data_collector, date_str, bool(args.date))
     by_market = attach_market_flows(by_market, data_collector, date_str, bool(args.date))
     by_market = attach_market_flow_history(by_market, data_collector, date_str)
+    by_market = attach_market_intraday(by_market, data_collector, date_str, bool(args.date))
     diagnosis = analyzer.market_diagnosis(df, prev_df)
     tiers = analyzer.build_tiers(df)
     tiers_common = analyzer.build_tiers(df, common_only=True)

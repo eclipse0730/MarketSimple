@@ -139,10 +139,15 @@
               min-width:0; overflow:hidden;
               background:linear-gradient(180deg,var(--panel2),var(--panel));
               border:1px solid var(--line); }
-  .mkt-head { display:flex; align-items:baseline; justify-content:space-between; gap:10px 14px; margin-bottom:14px; min-width:0; }
-  .mkt-head h3 { font-family:var(--round); font-size:16px; font-weight:700; margin:0;
+  /* 카드 상단: 좌(타이틀 + 그 아래 지수값/등락) · 우(장중 미니 차트) */
+  .mkt-top { display:flex; align-items:center; justify-content:space-between;
+              gap:14px; margin-bottom:16px; min-width:0; }
+  .mkt-info { min-width:0; display:flex; flex-direction:column; gap:7px; }
+  .mkt-info h3 { font-family:var(--round); font-size:16px; font-weight:700; margin:0;
                   letter-spacing:.04em; color:var(--heading); }
-  .mkt-head-idx { display:inline-flex; align-items:baseline; justify-content:flex-end; gap:8px; min-width:0; }
+  .mkt-head-idx { display:inline-flex; align-items:baseline; flex-wrap:wrap;
+                   justify-content:flex-start; gap:4px 8px; min-width:0; }
+  .mkt-top .mkt-spark { flex:0 0 44%; max-width:210px; margin:0; height:52px; }
   .mkt-index { font-size:17px; font-weight:850; color:var(--strong); }
   .mkt-index, .mkt-rate, .mkt-change { max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .mkt-rate { font-size:14px; font-weight:800; }
@@ -159,6 +164,21 @@
   .flow-open:hover { border-color:var(--accent);
                       background:color-mix(in srgb, var(--accent) 8%, var(--panel)); }
   .flow-open:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+
+  /* 장중 지수 미니 차트(면적형 + 전일 종가 기준선). 색은 부모 .up/.down 의
+     color 를 currentColor 로 받아 면적·선에 함께 적용한다. preserveAspectRatio=none
+     로 늘인 선은 vector-effect 로 굵기를 일정하게 유지한다. */
+  .mkt-spark { margin:12px 0 2px; height:46px; border-radius:12px; overflow:hidden;
+                background:color-mix(in srgb, var(--panel2) 70%, transparent);
+                border:1px solid color-mix(in srgb, var(--line) 70%, transparent); }
+  .mkt-spark svg { display:block; width:100%; height:100%; }
+  .mkt-spark .mkt-spark-area { fill:currentColor; opacity:.13; stroke:none; }
+  .mkt-spark .mkt-spark-line { fill:none; stroke:currentColor; stroke-width:1.6;
+                vector-effect:non-scaling-stroke; stroke-linejoin:round; stroke-linecap:round; }
+  .mkt-spark .mkt-spark-base { stroke:var(--faint); stroke-width:1; stroke-dasharray:3 3;
+                vector-effect:non-scaling-stroke; opacity:.55; }
+  .mkt-spark.up { color:var(--up); }
+  .mkt-spark.down { color:var(--down); }
 
   /* tiers */
   .tier-row { display:flex; gap:16px; padding:15px 0 15px 18px; position:relative;
@@ -273,7 +293,7 @@
   .gm-modal[hidden] { display:none; }
   .gm-backdrop { position:absolute; inset:0; background:rgba(0,0,0,.45);
                   animation:gmFade .15s ease; }
-  .gm-panel { position:relative; width:min(440px,94vw); max-height:80vh; display:flex;
+  .gm-panel { position:relative; width:min(440px,90vw); max-height:80vh; display:flex;
                flex-direction:column; background:var(--panel); border:1px solid var(--line);
                border-radius:18px; box-shadow:0 20px 60px rgba(0,0,0,.3); overflow:hidden;
                animation:gmRise .18s cubic-bezier(.16,1,.3,1); }
@@ -297,7 +317,7 @@
   @keyframes gmRise { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:none} }
 
   /* 수급 추이 모달 표 (날짜 × 기관/외인/개인, 누른 주체 열 강조) */
-  .fm-panel { width:min(420px,94vw); }
+  .fm-panel { width:min(420px,90vw); }
   .fm-body { overflow-y:auto; padding:2px 14px 16px; }
   .fm-table { width:100%; border-collapse:collapse; font-family:var(--round); }
   .fm-table th, .fm-table td { padding:8px 7px; text-align:right; font-size:12.5px; white-space:nowrap;
@@ -462,8 +482,8 @@
     .tv-chips { grid-template-columns:repeat(2, minmax(0, 1fr)); gap:7px; grid-auto-rows:auto; }
     .tv-more-grid { grid-template-columns:repeat(2, minmax(0, 1fr)); gap:7px; grid-auto-rows:auto; }
     .tv-chips > .tv-chip, .tv-more-grid > .tv-chip { height:58px; }
-    .mkt-head { flex-wrap:wrap; }
-    .mkt-head-idx { width:100%; justify-content:flex-start; flex-wrap:wrap; }
+    .mkt-top { gap:10px; }
+    .mkt-top .mkt-spark { flex:0 0 42%; height:48px; }
     .tv-chip { padding:9px 10px; gap:7px; }
     .tv-chip .tv-n { font-size:12.5px; }
     .tv-top { gap:7px; }

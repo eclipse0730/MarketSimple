@@ -57,6 +57,9 @@ MARKET_SUM_URL = "https://finance.naver.com/sise/sise_market_sum.naver"
 INVESTOR_FLOW_URL = "https://finance.naver.com/sise/investorDealTrendDay.naver"
 DEAL_RANK_URL = "https://finance.naver.com/sise/sise_deal_rank_iframe.naver"
 DAILY_URL = "https://api.finance.naver.com/siseJson.naver"
+# 장중 분봉 지수: 한 번의 요청으로 09:00~현재까지 1분 간격 시계열을 준다.
+# 응답 = [{"localDateTime":"YYYYMMDDHHMMSS","currentPrice":2634.12, ...}, ...]
+INDEX_INTRADAY_URL = "https://api.stock.naver.com/chart/domestic/index/{code}/minute"
 SECTOR_LIST_URL = "https://finance.naver.com/sise/sise_group.naver"
 SECTOR_DETAIL_URL = "https://finance.naver.com/sise/sise_group_detail.naver"
 HISTORY_WORKERS = 8
@@ -146,6 +149,40 @@ def collect_market_indices(date_str: str, historical: bool = False) -> dict:
     if historical and date_str != today:
         return _collect_index_history(date_str)
     return _collect_index_snapshot()
+
+
+def collect_index_intraday(date_str: str, historical: bool = False, count: int = 400) -> dict:
+    """KOSPI/KOSDAQ 장중 분봉 지수 시계열을 수집한다(시장당 요청 1번).
+
+    카드 미니 차트용. 네이버 분봉 API는 *당일* 데이터만 주므로 과거(historical)
+    빌드에선 빈 dict를 돌려줘 차트가 생략된다. 각 값은 09:00→현재 순서의
+    종가 리스트([float, ...])이고, 한 종목이라도 실패하면 그 시장만 빈 리스트.
+    """
+    today = datetime.now().strftime("%Y%m%d")
+    if historical and date_str != today:
+        return {}
+
+    out = {}
+    for market in config.MARKETS:
+        try:
+            response = requests.get(
+                INDEX_INTRADAY_URL.format(code=market),
+                params={"count": count},
+                headers={"User-Agent": USER_AGENT},
+                timeout=15,
+            )
+            response.raise_for_status()
+            rows = response.json()
+            out[market] = [
+                float(r["currentPrice"])
+                for r in rows
+                if str(r.get("localDateTime", ""))[:8] == date_str
+                and r.get("currentPrice") is not None
+            ]
+        except Exception as exc:
+            print(f"  · [안내] {market} 장중 지수 수집 실패: {exc}")
+            out[market] = []
+    return out
 
 
 def collect_market_flows(date_str: str, historical: bool = False) -> dict:
