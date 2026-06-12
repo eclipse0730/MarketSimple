@@ -259,12 +259,8 @@
   }
   .chip .c-name { color:var(--chip-name); }
   .chip .c-rate { color:color-mix(in srgb, var(--tc) 82%, var(--chip-rate-base)); font-size:12px; font-weight:800; }
-  /* 뉴스 모달 트리거 tier 칩: <button> 폼 리셋 + 우상단 알림 점(레이아웃 불변) */
+  /* 뉴스 모달 트리거 tier 칩: <button> 폼 리셋(시각 배지 없음, 탭 동작만) */
   button.chip { appearance:none; -webkit-appearance:none; font:inherit; cursor:pointer; }
-  .chip.chip-has-news { position:relative; overflow:visible; }
-  .chip-news-dot { position:absolute; top:-3px; right:-1px; width:8px; height:8px; border-radius:50%;
-                    background:linear-gradient(135deg,var(--accent),var(--up));
-                    border:1.5px solid var(--panel); box-shadow:0 1px 2px rgba(0,0,0,.14); }
   .empty { color:var(--faint); font-size:13px; }
 
   /* big-theme heatmap */
@@ -433,14 +429,10 @@
               background:linear-gradient(180deg,var(--panel2),var(--chip-base)); border:1px solid var(--line);
               transition:transform .14s ease, box-shadow .14s ease; }
   .tv-chip:hover { transform:translateY(-2px); box-shadow:0 5px 14px rgba(79,65,72,.12); }
-  /* 뉴스 모달 트리거 칩은 <button> 이라 기본 폼 스타일을 a 칩과 동일하게 리셋한다. */
+  /* 뉴스 모달 트리거 칩은 <button> 이라 기본 폼 스타일을 a 칩과 동일하게 리셋한다.
+     (시각 배지는 두지 않고, 탭하면 뉴스 모달이 열리는 동작만 유지) */
   button.tv-chip { appearance:none; -webkit-appearance:none; font:inherit; color:inherit;
                     text-align:left; cursor:pointer; }
-  .tv-chip.tv-has-news { padding-right:38px; }   /* 우상단 뉴스 태그 자리 확보 */
-  .tv-news-tag { position:absolute; top:8px; right:8px; z-index:1;
-                  font-family:var(--round); font-size:9.5px; font-weight:800; letter-spacing:.02em;
-                  color:#fff; padding:2px 6px; border-radius:999px; line-height:1.2;
-                  background:linear-gradient(135deg,var(--accent),var(--up)); }
   .tv-top { display:flex; align-items:center; gap:8px; min-width:0; width:100%; }
   .tv-chip .tv-r { flex:0 0 auto; font-size:12px; font-weight:900; color:#fff;
                     min-width:22px; height:22px; display:inline-flex; align-items:center;

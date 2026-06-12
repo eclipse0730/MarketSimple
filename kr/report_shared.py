@@ -110,12 +110,11 @@ def _stock_chip(row, news_map=None):
         f'<span class="c-name">{row.종목명}</span>'
         f'<span class="c-rate mono">{_fmt(row.등락률)}</span>'
     )
-    # 뉴스 있는 칩(극단 tier 한정)은 우상단 점 배지 + 뉴스 모달 트리거가 된다.
+    # 뉴스 있는 칩(극단 tier 한정)은 뉴스 모달 트리거가 된다(시각 배지 없음, 탭 동작만).
     if news_map is not None and code in news_map:
         return (
             f'<button type="button" class="chip {cls} chip-has-news" data-news-code="{code}"'
-            f' aria-label="{escape(str(row.종목명), quote=True)} 관련 뉴스">'
-            f'<span class="chip-news-dot" aria-hidden="true"></span>{inner}</button>'
+            f' aria-label="{escape(str(row.종목명), quote=True)} 관련 뉴스">{inner}</button>'
         )
     url = config.STOCK_URL_TEMPLATE.format(code=code, code6=code, symbol=code)
     return (
@@ -502,7 +501,6 @@ def _tv_chip(i, r, meta_fn, news_map=None):
         return (
             f'<button type="button" class="tv-chip {cls} tv-has-news" data-news-code="{code}"'
             f' title="{name_attr}" aria-label="{name_attr} 관련 뉴스">'
-            f'<span class="tv-news-tag" aria-hidden="true">뉴스</span>'
             f'{inner}</button>'
         )
     url = config.STOCK_URL_TEMPLATE.format(code=code, code6=code, symbol=code)
