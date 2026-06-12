@@ -103,13 +103,23 @@ def _market_flow_row(market, c):
     return f'<div class="mkt-flow">{items}</div>'
 
 
-def _stock_chip(row):
+def _stock_chip(row, news_map=None):
     code = str(row.종목코드).zfill(6)
+    cls = _cls(row.등락률)
+    inner = (
+        f'<span class="c-name">{row.종목명}</span>'
+        f'<span class="c-rate mono">{_fmt(row.등락률)}</span>'
+    )
+    # 뉴스 있는 칩(극단 tier 한정)은 우상단 점 배지 + 뉴스 모달 트리거가 된다.
+    if news_map is not None and code in news_map:
+        return (
+            f'<button type="button" class="chip {cls} chip-has-news" data-news-code="{code}"'
+            f' aria-label="{escape(str(row.종목명), quote=True)} 관련 뉴스">'
+            f'<span class="chip-news-dot" aria-hidden="true"></span>{inner}</button>'
+        )
     url = config.STOCK_URL_TEMPLATE.format(code=code, code6=code, symbol=code)
     return (
-        f'<a class="chip {_cls(row.등락률)}" href="{url}" target="_blank" rel="noopener noreferrer">'
-        f'<span class="c-name">{row.종목명}</span>'
-        f'<span class="c-rate mono">{_fmt(row.등락률)}</span></a>'
+        f'<a class="chip {cls}" href="{url}" target="_blank" rel="noopener noreferrer">{inner}</a>'
     )
 
 
@@ -352,10 +362,25 @@ def _section_diagnosis(diag):
     </section>"""
 
 
-def _tier_rows(tiers, theme):
+# 뉴스 모달을 붙일 극단 tier만(S·A 강한 상승 / F·G 강한 하락). 중간(B~E)은
+# 종목이 많고 이벤트성이 약해 제외 — 수집 비용·태그 희석을 막는다.
+NEWS_TIERS = ("S", "A", "F", "G")
+
+
+def _news_tier_frames(*tier_dicts):
+    """tier 딕셔너리들에서 S·A·F·G DataFrame만 모은다(뉴스 코드/종목명 해석용)."""
+    frames = []
+    for td in tier_dicts:
+        if td:
+            frames.extend(td[t] for t in NEWS_TIERS if t in td)
+    return frames
+
+
+def _tier_rows(tiers, theme, news_map=None):
     rows = ""
     for name, lo, hi in config.TIERS:
         sub = tiers[name]
+        chip_news = news_map if name in NEWS_TIERS else None
         # 티어 강조색은 테마 변수(--tier-X-2)를 참조 → data-theme 변경 시 실시간 반영
         color = f"var(--tier-{name}-2, #888)"
         # 티어 범위 라벨
@@ -379,9 +404,9 @@ def _tier_rows(tiers, theme):
             tier_rows = list(sub.itertuples())
             visible = tier_rows[:collapse_limit]
             hidden = tier_rows[collapse_limit:]
-            chips = "".join(_stock_chip(r) for r in visible)
+            chips = "".join(_stock_chip(r, chip_news) for r in visible)
             if hidden:
-                hidden_chips = "".join(_stock_chip(r) for r in hidden)
+                hidden_chips = "".join(_stock_chip(r, chip_news) for r in hidden)
                 chips += f"""
                 <details class="tier-more">
                   <summary class="mono">+{len(hidden)}개 더 보기</summary>
@@ -419,12 +444,12 @@ def _rep_switch(toggle_id, left="보통주", right="전종목"):
     return toggle, switch
 
 
-def _section_tiers(tiers, theme, tiers_common=None):
-    all_rows = _tier_rows(tiers, theme)
+def _section_tiers(tiers, theme, tiers_common=None, news_map=None):
+    all_rows = _tier_rows(tiers, theme, news_map)
     has_common = tiers_common is not None
 
     if has_common:
-        common_rows = _tier_rows(tiers_common, theme)
+        common_rows = _tier_rows(tiers_common, theme, news_map)
         toggle, switch = _rep_switch("tierToggle")
         common_block = f'<div class="tiers tiers-common">{common_rows}</div>'
     else:
@@ -460,31 +485,41 @@ def _tv_volume_meta(r):
     )
 
 
-def _tv_chip(i, r, meta_fn):
+def _tv_chip(i, r, meta_fn, news_map=None):
     code = str(r.종목코드).zfill(6)
-    url = config.STOCK_URL_TEMPLATE.format(code=code, code6=code, symbol=code)
     cls = _cls(r.등락률)
-    name = str(r.종목명)
-    name_attr = escape(name, quote=True)
-    return (
-        f'<a class="tv-chip {cls}" href="{url}" target="_blank" rel="noopener noreferrer"'
-        f' title="{name_attr}" aria-label="{name_attr}">'
+    name_attr = escape(str(r.종목명), quote=True)
+    inner = (
         f'<span class="tv-top">'
         f'<span class="tv-r mono">{i}</span>'
         f'<span class="tv-n">{r.종목명}</span>'
         f'</span>'
-        f'<span class="tv-meta">{meta_fn(r)}</span></a>'
+        f'<span class="tv-meta">{meta_fn(r)}</span>'
+    )
+    # 뉴스 있는 칩(거래량 급증 한정)은 종목 페이지 링크 대신 뉴스 모달 트리거가 된다.
+    # 모달 안에 헤드라인 + 종목 페이지 링크를 함께 제공한다.
+    if news_map is not None and code in news_map:
+        return (
+            f'<button type="button" class="tv-chip {cls} tv-has-news" data-news-code="{code}"'
+            f' title="{name_attr}" aria-label="{name_attr} 관련 뉴스">'
+            f'<span class="tv-news-tag" aria-hidden="true">뉴스</span>'
+            f'{inner}</button>'
+        )
+    url = config.STOCK_URL_TEMPLATE.format(code=code, code6=code, symbol=code)
+    return (
+        f'<a class="tv-chip {cls}" href="{url}" target="_blank" rel="noopener noreferrer"'
+        f' title="{name_attr}" aria-label="{name_attr}">{inner}</a>'
     )
 
 
-def _tv_chip_grid(rows, grid_cls, meta_fn):
+def _tv_chip_grid(rows, grid_cls, meta_fn, news_map=None):
     all_rows = list(rows.itertuples())
     visible = all_rows[:TV_COLLAPSE_LIMIT]
     hidden = all_rows[TV_COLLAPSE_LIMIT:]
-    chips = "".join(_tv_chip(i + 1, r, meta_fn) for i, r in enumerate(visible))
+    chips = "".join(_tv_chip(i + 1, r, meta_fn, news_map) for i, r in enumerate(visible))
     if hidden:
         hidden_chips = "".join(
-            _tv_chip(i + TV_COLLAPSE_LIMIT + 1, r, meta_fn) for i, r in enumerate(hidden)
+            _tv_chip(i + TV_COLLAPSE_LIMIT + 1, r, meta_fn, news_map) for i, r in enumerate(hidden)
         )
         chips += f"""
         <details class="tv-more">
@@ -494,16 +529,16 @@ def _tv_chip_grid(rows, grid_cls, meta_fn):
     return f'<div class="tv-chips {grid_cls}">{chips}</div>'
 
 
-def _tv_section(*, icon, title, all_rows, common_rows, toggle_id, meta_fn):
+def _tv_section(*, icon, title, all_rows, common_rows, toggle_id, meta_fn, news_map=None):
     """거래대금/거래량 등 '순위 칩 그리드 + 보통주 토글' 공용 섹션."""
     if all_rows is None or not len(all_rows):
         return ""
 
-    all_grid = _tv_chip_grid(all_rows, "tv-all", meta_fn)
+    all_grid = _tv_chip_grid(all_rows, "tv-all", meta_fn, news_map)
     has_common = common_rows is not None and len(common_rows)
 
     if has_common:
-        common_grid = _tv_chip_grid(common_rows, "tv-common", meta_fn)
+        common_grid = _tv_chip_grid(common_rows, "tv-common", meta_fn, news_map)
         toggle, switch = _rep_switch(toggle_id)
     else:
         common_grid = toggle = switch = ""
@@ -517,19 +552,19 @@ def _tv_section(*, icon, title, all_rows, common_rows, toggle_id, meta_fn):
     </section>"""
 
 
-def _section_top_value(top_value, top_value_common=None):
+def _section_top_value(top_value, top_value_common=None, news_map=None):
     return _tv_section(
         icon="money", title="거래대금 Top30",
         all_rows=top_value, common_rows=top_value_common,
-        toggle_id="tvToggle", meta_fn=_tv_value_meta,
+        toggle_id="tvToggle", meta_fn=_tv_value_meta, news_map=news_map,
     )
 
 
-def _section_top_volume(top_volume, top_volume_common=None):
+def _section_top_volume(top_volume, top_volume_common=None, news_map=None):
     return _tv_section(
         icon="volume", title="거래량 급증 Top30",
         all_rows=top_volume, common_rows=top_volume_common,
-        toggle_id="tvolToggle", meta_fn=_tv_volume_meta,
+        toggle_id="tvolToggle", meta_fn=_tv_volume_meta, news_map=news_map,
     )
 
 
@@ -542,23 +577,23 @@ def _tv_deal_meta(r):
     )
 
 
-def _deal_col(label, rows):
+def _deal_col(label, rows, news_map=None):
     """투자자 한 명(기관/외인)의 Top10 세로 리스트 한 열."""
-    chips = "".join(_tv_chip(i + 1, r, _tv_deal_meta) for i, r in enumerate(rows.itertuples()))
+    chips = "".join(_tv_chip(i + 1, r, _tv_deal_meta, news_map) for i, r in enumerate(rows.itertuples()))
     return f'<div class="deal-col"><div class="deal-col-head">{label}</div>{chips}</div>'
 
 
-def _deal_view(view_cls, inst_rows, foreign_rows):
+def _deal_view(view_cls, inst_rows, foreign_rows, news_map=None):
     """한 방향(순매수 또는 순매도)의 좌(기관)·우(외인) 2열 뷰."""
     return (
         f'<div class="deal-view {view_cls}">'
-        f'{_deal_col("기관", inst_rows)}'
-        f'{_deal_col("외인", foreign_rows)}'
+        f'{_deal_col("기관", inst_rows, news_map)}'
+        f'{_deal_col("외인", foreign_rows, news_map)}'
         f'</div>'
     )
 
 
-def _section_investor_deal(inst_buy, foreign_buy, inst_sell, foreign_sell):
+def _section_investor_deal(inst_buy, foreign_buy, inst_sell, foreign_sell, news_map=None):
     """기관·외인 순매매 통합 섹션.
 
     좌=기관 Top10 / 우=외인 Top10 의 2열을 한 뷰로 묶고, 순매수↔순매도 토글
@@ -570,8 +605,8 @@ def _section_investor_deal(inst_buy, foreign_buy, inst_sell, foreign_sell):
     if not has_buy and not has_sell:
         return ""
 
-    buy_view = _deal_view("deal-buy", inst_buy, foreign_buy) if has_buy else ""
-    sell_view = _deal_view("deal-sell", inst_sell, foreign_sell) if has_sell else ""
+    buy_view = _deal_view("deal-buy", inst_buy, foreign_buy, news_map) if has_buy else ""
+    sell_view = _deal_view("deal-sell", inst_sell, foreign_sell, news_map) if has_sell else ""
 
     if has_buy and has_sell:
         toggle, switch = _rep_switch("dealToggle", left="순매수", right="순매도")
@@ -753,6 +788,39 @@ def _flow_modal_html(by_market):
     </div>"""
 
 
+def _news_modal_html(volume_news, *frames):
+    """거래량 급증 칩 탭 → 종목별 최신 뉴스 모달.
+
+    데이터(code→{name, items})를 mb-news-data 에 임베드하고 news_modal.js 가
+    헤드라인 + 종목 페이지 링크를 렌더한다. 종목명은 급증 표(frames)에서 찾는다.
+    뉴스가 한 종목도 없으면 비활성(섹션 칩도 일반 링크로 남는다)."""
+    if not volume_news:
+        return ""
+    names = {}
+    for frame in frames:
+        if frame is not None and len(frame):
+            for row in frame.itertuples():
+                names[str(row.종목코드).zfill(6)] = str(row.종목명)
+    data = {
+        code: {"name": names.get(code, code), "items": items}
+        for code, items in volume_news.items()
+    }
+    payload = json.dumps(data, ensure_ascii=False)
+    return f"""
+    <script id="mb-news-data" type="application/json">{payload}</script>
+    <div class="gm-modal" id="newsModal" hidden>
+      <div class="gm-backdrop" data-nclose></div>
+      <div class="gm-panel news-panel" role="dialog" aria-modal="true" aria-labelledby="newsTitle">
+        <div class="gm-head">
+          <h3 id="newsTitle" class="gm-title"></h3>
+          <button class="gm-x" type="button" aria-label="닫기" data-nclose>&times;</button>
+        </div>
+        <div class="gm-sub" id="newsSub"></div>
+        <div class="news-body" id="newsBody"></div>
+      </div>
+    </div>"""
+
+
 def _date_label(date_str):
     return f"{date_str[:4]}.{date_str[4:6]}.{date_str[6:]}"
 
@@ -879,19 +947,22 @@ def _date_nav_html(date_str, date_nav):
     )
 
 
-def write_html(path, *, date_str, session, generated_at, overall, by_market, tiers, diagnosis=None, top=None, bottom=None, sector_top=None, sector_bottom=None, sector_tiers=None, sector_market_avg=None, big_theme=None, big_theme_common=None, group_members=None, top_value=None, top_value_common=None, top_volume=None, top_volume_common=None, inst_buy=None, foreign_buy=None, inst_sell=None, foreign_sell=None, tiers_common=None, date_nav=None, theme_name=DEFAULT_THEME):
+def write_html(path, *, date_str, session, generated_at, overall, by_market, tiers, diagnosis=None, top=None, bottom=None, sector_top=None, sector_bottom=None, sector_tiers=None, sector_market_avg=None, big_theme=None, big_theme_common=None, group_members=None, top_value=None, top_value_common=None, top_volume=None, top_volume_common=None, news_map=None, inst_buy=None, foreign_buy=None, inst_sell=None, foreign_sell=None, tiers_common=None, date_nav=None, theme_name=DEFAULT_THEME):
     theme = get_theme(theme_name)
     body = _section_market(by_market)
     body += _section_diagnosis(diagnosis)
-    body += _section_top_value(top_value, top_value_common)
-    body += _section_top_volume(top_volume, top_volume_common)
-    body += _section_investor_deal(inst_buy, foreign_buy, inst_sell, foreign_sell)
-    body += _section_tiers(tiers, theme, tiers_common)
+    body += _section_top_value(top_value, top_value_common, news_map)
+    body += _section_top_volume(top_volume, top_volume_common, news_map)
+    body += _section_investor_deal(inst_buy, foreign_buy, inst_sell, foreign_sell, news_map)
+    body += _section_tiers(tiers, theme, tiers_common, news_map)
     if sector_tiers:
         body += _section_sector_tiers(sector_tiers, sector_market_avg, theme)
     body += _section_heatmap(big_theme, big_theme_common)
     body += _group_modal_html(group_members)
     body += _flow_modal_html(by_market)
+    body += _news_modal_html(news_map, top_value, top_value_common, top_volume,
+                             top_volume_common, inst_buy, foreign_buy, inst_sell, foreign_sell,
+                             *_news_tier_frames(tiers, tiers_common))
     html = _PAGE.format(
         date=_date_label(date_str),
         og_tags=_og_tags_html(date_str, overall),
@@ -909,6 +980,7 @@ def write_html(path, *, date_str, session, generated_at, overall, by_market, tie
         theme_ids_json=json.dumps(theme_ids(), ensure_ascii=False),
         group_modal_js=_GROUP_MODAL_JS,
         flow_modal_js=_FLOW_MODAL_JS,
+        news_modal_js=_NEWS_MODAL_JS,
         body=body,
     )
     with open(path, "w", encoding="utf-8") as f:
@@ -921,3 +993,4 @@ _PAGE = _read_text(_TEMPLATE_DIR / "report.html")
 _REPORT_CSS = _read_text(_ASSET_DIR / "report.css")
 _GROUP_MODAL_JS = _script_tag(_read_text(_ASSET_DIR / "group_modal.js"))
 _FLOW_MODAL_JS = _script_tag(_read_text(_ASSET_DIR / "flow_modal.js"))
+_NEWS_MODAL_JS = _script_tag(_read_text(_ASSET_DIR / "news_modal.js"))

@@ -60,6 +60,9 @@ DAILY_URL = "https://api.finance.naver.com/siseJson.naver"
 # 장중 분봉 지수: 한 번의 요청으로 09:00~현재까지 1분 간격 시계열을 준다.
 # 응답 = [{"localDateTime":"YYYYMMDDHHMMSS","currentPrice":2634.12, ...}, ...]
 INDEX_INTRADAY_URL = "https://api.stock.naver.com/chart/domestic/index/{code}/minute"
+# 종목별 최신 뉴스: 응답 = [{"total":N,"items":[{officeId,articleId,officeName,
+# title,datetime("YYYYMMDDHHMM"), ...}, ...]}, ...] (섹션별 묶음).
+STOCK_NEWS_URL = "https://m.stock.naver.com/api/news/stock/{code}"
 SECTOR_LIST_URL = "https://finance.naver.com/sise/sise_group.naver"
 SECTOR_DETAIL_URL = "https://finance.naver.com/sise/sise_group_detail.naver"
 HISTORY_WORKERS = 8
@@ -183,6 +186,65 @@ def collect_index_intraday(date_str: str, historical: bool = False, count: int =
             print(f"  · [안내] {market} 장중 지수 수집 실패: {exc}")
             out[market] = []
     return out
+
+
+def collect_stock_news(codes, names=None, per: int = 5, max_workers: int = 8) -> dict:
+    """종목코드 리스트 → {code: [{title, office, datetime, url}, ...]} (상위 per개).
+
+    네이버 모바일 종목 뉴스 API를 종목당 1번 호출(쓰레드풀 병렬)해 빌드 시점에
+    HTML 임베드용 데이터를 만든다. 정적 리포트라 클라이언트 라이브 호출이 불가해
+    여기서 미리 수집한다. 실패하거나 뉴스 없는 종목은 결과에서 빠진다.
+
+    정렬: 기본 최신순 → 그 위에 '제목에 종목명 포함' 기사를 앞으로(안정 정렬이라
+    같은 그룹 내에선 최신순 유지). names(코드→종목명)가 있을 때만 적용한다. 네이버가
+    종목에 곁가지로 묶은 기사보다 회사명이 직접 들어간 기사를 우선 노출하기 위함.
+    """
+    codes = [str(c).zfill(6) for c in dict.fromkeys(codes)]  # 중복 제거(순서 유지)
+    names = names or {}
+
+    def fetch(code):
+        try:
+            response = requests.get(
+                STOCK_NEWS_URL.format(code=code),
+                headers={"User-Agent": USER_AGENT},
+                timeout=10,
+            )
+            response.raise_for_status()
+            items = []
+            for group in response.json():
+                items.extend(group.get("items", []))
+            items.sort(key=lambda it: str(it.get("datetime", "")), reverse=True)
+            name = names.get(code, "")
+            if name:
+                items.sort(
+                    key=lambda it: name in unescape(str(it.get("title", ""))),
+                    reverse=True,
+                )
+
+            out = []
+            for it in items:
+                oid, aid = str(it.get("officeId", "")), str(it.get("articleId", ""))
+                title = unescape(str(it.get("title", ""))).strip()
+                if not (oid and aid and title):
+                    continue
+                out.append({
+                    "title": title,
+                    "office": str(it.get("officeName", "")),
+                    "datetime": str(it.get("datetime", "")),
+                    "url": f"https://n.news.naver.com/mnews/article/{oid}/{aid}",
+                })
+                if len(out) >= per:
+                    break
+            return code, out
+        except Exception:
+            return code, []
+
+    result = {}
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        for code, items in executor.map(fetch, codes):
+            if items:
+                result[code] = items
+    return result
 
 
 def collect_market_flows(date_str: str, historical: bool = False) -> dict:

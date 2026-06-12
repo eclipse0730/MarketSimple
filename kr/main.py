@@ -150,6 +150,25 @@ def attach_market_flow_history(by_market, collector_module, date_str: str, days:
     return by_market
 
 
+def _collect_codes(*frames):
+    """여러 종목 DataFrame 에서 종목코드를 순서대로 모아 중복 제거한 리스트."""
+    codes = []
+    for frame in frames:
+        if frame is not None and len(frame):
+            codes.extend(str(c).zfill(6) for c in frame["종목코드"])
+    return list(dict.fromkeys(codes))
+
+
+def _code_name_map(*frames):
+    """여러 종목 DataFrame 에서 {종목코드: 종목명} 매핑(뉴스 제목 종목명 매칭용)."""
+    names = {}
+    for frame in frames:
+        if frame is not None and len(frame):
+            for row in frame.itertuples():
+                names[str(row.종목코드).zfill(6)] = str(row.종목명)
+    return names
+
+
 def attach_market_intraday(by_market, collector_module, date_str: str, historical: bool):
     """카드 미니 차트용 장중 분봉 지수 시계열을 붙인다(best-effort).
 
@@ -356,6 +375,23 @@ def main(argv=None):
         top_volume = top_volume_common = None
         print(f"  · 거래량 급증: 과거 CSV {len(prev_frames)}개 (최소 "
               f"{config.VOLUME_SURGE_MIN_DAYS}개 필요) — 섹션 생략")
+
+    # 칩 → 종목별 뉴스 모달용. 거래대금·거래량·순매매 세 섹션 코드를 합집합으로
+    # dedup 해 빌드 시점에 한 번만 수집한다(대형주가 겹쳐 요청 수가 거의 안 는다).
+    # HTML 에 임베드하며, 실패해도 섹션은 그대로 두고 모달만 비활성된다.
+    # 극단 tier(S·A·F·G)는 큰 변동주라 '왜?'가 가장 궁금 — 여기에도 뉴스를 붙인다.
+    tier_frames = [td[t] for td in (tiers, tiers_common) for t in ("S", "A", "F", "G") if t in td]
+    news_frames = (top_value, top_value_common, top_volume, top_volume_common,
+                   inst_buy, foreign_buy, inst_sell, foreign_sell, *tier_frames)
+    news_map = {}
+    news_codes = _collect_codes(*news_frames)
+    if news_codes and hasattr(data_collector, "collect_stock_news"):
+        try:
+            news_map = data_collector.collect_stock_news(
+                news_codes, names=_code_name_map(*news_frames), per=5)
+            print(f"  · 관련 뉴스: {len(news_map)}/{len(news_codes)}종목 수집")
+        except Exception as exc:
+            print(f"  · [안내] 관련 뉴스 수집 실패: {exc}")
     theme_map = load_theme_map(date_str, data_collector, "naver")
     print(f"  · 테마 매핑 수: {len(theme_map):,}  (수기 큐레이션, 미분류 제외)")
 
@@ -398,6 +434,7 @@ def main(argv=None):
         top_value_common=top_value_common,
         top_volume=top_volume,
         top_volume_common=top_volume_common,
+        news_map=news_map,
         inst_buy=inst_buy,
         foreign_buy=foreign_buy,
         inst_sell=inst_sell,

@@ -259,6 +259,12 @@
   }
   .chip .c-name { color:var(--chip-name); }
   .chip .c-rate { color:color-mix(in srgb, var(--tc) 82%, var(--chip-rate-base)); font-size:12px; font-weight:800; }
+  /* 뉴스 모달 트리거 tier 칩: <button> 폼 리셋 + 우상단 알림 점(레이아웃 불변) */
+  button.chip { appearance:none; -webkit-appearance:none; font:inherit; cursor:pointer; }
+  .chip.chip-has-news { position:relative; overflow:visible; }
+  .chip-news-dot { position:absolute; top:-3px; right:-1px; width:8px; height:8px; border-radius:50%;
+                    background:linear-gradient(135deg,var(--accent),var(--up));
+                    border:1.5px solid var(--panel); box-shadow:0 1px 2px rgba(0,0,0,.14); }
   .empty { color:var(--faint); font-size:13px; }
 
   /* big-theme heatmap */
@@ -327,6 +333,22 @@
   .fm-table tr:last-child td { border-bottom:0; }
   .fm-table .fm-d { text-align:left; color:var(--faint); font-weight:700; }
   .fm-table .fm-hl { background:color-mix(in srgb, var(--accent) 12%, transparent); }
+
+  /* 거래량 급증 칩 → 종목별 뉴스 모달 (gm-modal 컨테이너 재사용) */
+  .news-panel { width:min(460px,90vw); }
+  .news-stock-link { display:inline-flex; align-items:center; font-family:var(--round);
+                      font-size:12px; font-weight:800; color:var(--accent); text-decoration:none; }
+  .news-stock-link:hover { text-decoration:underline; }
+  .news-body { overflow-y:auto; padding:2px 12px 14px; }
+  .news-row { display:flex; flex-direction:column; gap:5px; padding:11px 12px; text-decoration:none;
+               color:inherit; border-bottom:1px solid color-mix(in srgb, var(--line) 72%, transparent); }
+  .news-row:last-child { border-bottom:0; }
+  .news-row:hover { background:var(--panel2); }
+  .news-title { font-size:13.5px; font-weight:700; line-height:1.45; color:var(--ink); }
+  .news-meta { display:flex; align-items:center; gap:8px; font-family:var(--round);
+                font-size:11px; font-weight:700; color:var(--faint); }
+  .news-office { color:var(--sub); }
+  .news-empty { padding:18px 14px; text-align:center; color:var(--faint); font-size:13px; }
   .fm-table th.fm-hl { color:var(--heading); }
 
   /* themes */
@@ -411,6 +433,14 @@
               background:linear-gradient(180deg,var(--panel2),var(--chip-base)); border:1px solid var(--line);
               transition:transform .14s ease, box-shadow .14s ease; }
   .tv-chip:hover { transform:translateY(-2px); box-shadow:0 5px 14px rgba(79,65,72,.12); }
+  /* 뉴스 모달 트리거 칩은 <button> 이라 기본 폼 스타일을 a 칩과 동일하게 리셋한다. */
+  button.tv-chip { appearance:none; -webkit-appearance:none; font:inherit; color:inherit;
+                    text-align:left; cursor:pointer; }
+  .tv-chip.tv-has-news { padding-right:38px; }   /* 우상단 뉴스 태그 자리 확보 */
+  .tv-news-tag { position:absolute; top:8px; right:8px; z-index:1;
+                  font-family:var(--round); font-size:9.5px; font-weight:800; letter-spacing:.02em;
+                  color:#fff; padding:2px 6px; border-radius:999px; line-height:1.2;
+                  background:linear-gradient(135deg,var(--accent),var(--up)); }
   .tv-top { display:flex; align-items:center; gap:8px; min-width:0; width:100%; }
   .tv-chip .tv-r { flex:0 0 auto; font-size:12px; font-weight:900; color:#fff;
                     min-width:22px; height:22px; display:inline-flex; align-items:center;
